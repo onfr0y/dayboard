@@ -1,6 +1,11 @@
 import Foundation
 import Security
 
+private extension UUID {
+    // Notion can return object_not_found for an uppercase UUID in a data source URL.
+    var notionID: String { uuidString.lowercased() }
+}
+
 func notionDay(_ value: String, in calendar: Calendar) -> Date? {
     if value.count == 10 {
         let parts = value.split(separator: "-").compactMap { Int($0) }
@@ -140,7 +145,7 @@ enum NotionAPI {
 
     static func fetch(token: String) async throws -> Snapshot {
         let config = try NotionConfiguration.require()
-        let pages = try await query(source: config.taskSourceID.uuidString, token: token,
+        let pages = try await query(source: config.taskSourceID.notionID, token: token,
                                     filter: ["property": "Action Date", "date": ["is_not_empty": true]])
         return Snapshot(fetchedAt: Date(), tasks: pages.compactMap(\.task))
     }
@@ -152,7 +157,7 @@ enum NotionAPI {
         let first = calendar.startOfDay(for: date)
         let last = calendar.date(byAdding: .day, value: 1, to: first)!
         let today = dayKey(first, in: calendar)
-        let source = sourceID.uuidString.lowercased()
+        let source = sourceID.notionID
         // Fetch the local date and nearby timed entries, then check each in the same timezone.
         let previous = dayKey(calendar.date(byAdding: .day, value: -1, to: first)!, in: calendar)
         let following = dayKey(last, in: calendar)
@@ -173,7 +178,7 @@ enum NotionAPI {
             let body: [String: Any] = [
                 "parent": ["type": "data_source_id", "data_source_id": source],
                 "properties": ["Date": ["date": ["start": today]]],
-                "template": templateID.map { ["type": "template_id", "template_id": $0.uuidString.lowercased()] }
+                "template": templateID.map { ["type": "template_id", "template_id": $0.notionID] }
                     ?? ["type": "default"]
             ]
             var create = request(path: "pages", token: token, method: "POST")
@@ -190,7 +195,7 @@ enum NotionAPI {
 
     static func fetchHabits(token: String, day: Date, calendar: Calendar) async throws -> (HabitSnapshot, String?) {
         let config = try NotionConfiguration.require()
-        let pages = try await query(source: config.habitSourceID.uuidString, token: token)
+        let pages = try await query(source: config.habitSourceID.notionID, token: token)
         let habits = pages.compactMap(\.habit)
         let now = Date()
         let key = dayKey(day, in: calendar)
@@ -198,7 +203,7 @@ enum NotionAPI {
             return (HabitSnapshot(fetchedAt: now, habits: [], logDay: key, checkedIn: []), nil)
         }
         do {
-            let ids = try await checkedInIDs(on: day, calendar: calendar, token: token, logID: config.activitySourceID.uuidString)
+            let ids = try await checkedInIDs(on: day, calendar: calendar, token: token, logID: config.activitySourceID.notionID)
             return (HabitSnapshot(fetchedAt: now, habits: habits, logDay: key, checkedIn: ids), nil)
         } catch {
             let message: String
@@ -223,12 +228,12 @@ enum NotionAPI {
                       id.dropFirst(16).prefix(4), id.suffix(12)]
         let habitID = ranges.joined(separator: "-")
         guard UUID(uuidString: habitID) != nil else { throw NotionFailure.format }
-        let logID = config.activitySourceID.uuidString
+        let logID = config.activitySourceID.notionID
 
         do {
             let existing = try await checkedInIDs(on: day, calendar: calendar, token: token, logID: logID, session: session)
             guard !existing.contains(id) else { return }
-            let character = try await send(request(path: "data_sources/\(config.characterSourceID.uuidString)", token: token),
+            let character = try await send(request(path: "data_sources/\(config.characterSourceID.notionID)", token: token),
                                            session: session)
             guard !character.isEmpty else { throw NotionFailure.format }
             let response = try await send(request(path: "pages/\(habitID)", token: token), session: session)
@@ -241,7 +246,7 @@ enum NotionAPI {
                     "Activity": ["title": []],
                     "Date": ["date": ["start": entry.clickedAt.ISO8601Format()]],
                     "Good Habit": ["relation": [["id": habitID]]],
-                    "Character": ["relation": [["id": config.characterPageID.uuidString]]],
+                    "Character": ["relation": [["id": config.characterPageID.notionID]]],
                     "History": ["checkbox": false],
                     "Type": ["rich_text": [["type": "text", "text": ["content": "GOOD"]]]]
                 ]

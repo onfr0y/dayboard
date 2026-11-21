@@ -31,11 +31,19 @@ struct BoardSettings: View {
                     .onSubmit(connect)
                 HStack {
                     Button(model.connected ? "Replace token" : "Connect", action: connect)
-                        .disabled(model.notionConfiguration == nil || model.tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+                        .disabled(model.notionConfiguration == nil || model.tokenDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy || model.readingSavedToken)
                     if model.connected {
                         Button("Disconnect", action: model.disconnect).disabled(model.busy)
+                    } else if model.notionConfiguration != nil {
+                        Button("Use saved token") {
+                            Task {
+                                await model.restoreSavedToken()
+                                await model.refresh()
+                            }
+                        }
+                        .disabled(model.readingSavedToken || model.busy)
                     }
-                    if model.busy { ProgressView().controlSize(.small) }
+                    if model.busy || model.readingSavedToken { ProgressView().controlSize(.small) }
                 }
                 if let problem = model.problem {
                     Text(problem).foregroundStyle(.red)

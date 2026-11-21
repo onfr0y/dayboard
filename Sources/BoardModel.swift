@@ -18,6 +18,7 @@ final class BoardModel: ObservableObject {
     @Published private(set) var checkInProblem: String?
     @Published var busy = false
     @Published var connected = false
+    @Published private(set) var readingSavedToken = false
     @Published var problem: String?
     @Published var loginStatus = SMAppService.mainApp.status
     @Published var loginProblem: String?
@@ -67,12 +68,6 @@ final class BoardModel: ObservableObject {
             habitSnapshot = imported
             _ = writeCache(imported, to: habitCacheURL)
         }
-        do {
-            token = try TokenStore.read()
-            connected = token != nil
-        } catch {
-            problem = error.localizedDescription
-        }
     }
 
     func start() {
@@ -80,6 +75,7 @@ final class BoardModel: ObservableObject {
             setLaunchAtLogin(true)
         }
         Task {
+            await restoreSavedToken()
             await refresh()
             var nextRefresh = Date().addingTimeInterval(300)
             while !Task.isCancelled {
@@ -90,6 +86,19 @@ final class BoardModel: ObservableObject {
                     nextRefresh = Date().addingTimeInterval(300)
                 }
             }
+        }
+    }
+
+    func restoreSavedToken() async {
+        guard !connected, !readingSavedToken, !busy else { return }
+        readingSavedToken = true
+        defer { readingSavedToken = false }
+        do {
+            token = try await Task.detached { try TokenStore.read() }.value
+            connected = token != nil
+            problem = nil
+        } catch {
+            problem = "Allow Dayboard to use its saved Notion token in macOS Keychain, or enter a token below."
         }
     }
 
@@ -149,7 +158,7 @@ final class BoardModel: ObservableObject {
     }
 
     func connect(_ input: String) async -> Bool {
-        guard !busy, !journalBusy else { return false }
+        guard !busy, !journalBusy, !readingSavedToken else { return false }
         let candidate = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty else {
             problem = NotionFailure.missingToken.localizedDescription
