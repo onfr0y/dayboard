@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var calendarPanel: DesktopPanel!
     private var agendaPanel: DesktopPanel!
     private var timelinePanel: DesktopPanel?
+    private var pomodoroPanel: DesktopPanel?
+    private let pomodoro = PomodoroTimer()
     private var settings: NSWindow?
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
@@ -33,7 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.showTimeline()
         })
         agendaPanel = desktopPanel(title: "Dayboard Agenda", level: widgetLevel,
-                                   content: AgendaWidget(model: model, schedule: schedule) { [weak self] in self?.showSettings() })
+                                   content: AgendaWidget(model: model, schedule: schedule, pomodoro: pomodoro,
+                                                         openPomodoro: { [weak self] in self?.showPomodoro() },
+                                                         openSettings: { [weak self] in self?.showSettings() }))
         positionPanel()
         showBoard()
 
@@ -43,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let menu = NSMenu()
         visibilityItem = menu.addItem(withTitle: "Hide Desktop Board", action: #selector(toggleBoard), keyEquivalent: "")
         menu.addItem(withTitle: "Show Calendar Timeline", action: #selector(showTimeline), keyEquivalent: "")
+        menu.addItem(withTitle: "Show Pomodoro Timer", action: #selector(showPomodoro), keyEquivalent: "")
         menu.addItem(withTitle: "Refresh Tasks", action: #selector(refresh), keyEquivalent: "r")
         menu.addItem(withTitle: "Connect Mac Calendar…", action: #selector(connectCalendar), keyEquivalent: "")
         menu.addItem(withTitle: "Switch Text Colour", action: #selector(switchTextColour), keyEquivalent: "")
@@ -69,6 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             timelinePanel.stopReveal()
             timelinePanel.alphaValue = 1
             timelinePanel.setFrame(frame, display: true)
+        }
+        if let pomodoroPanel, pomodoroPanel.isVisible, let frame = pomodoroFrame() {
+            pomodoroPanel.setFrame(frame, display: true)
         }
     }
 
@@ -108,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func toggleBoard() {
         if calendarPanel.isVisible {
             closeTimeline()
+            pomodoroPanel?.orderOut(nil)
             calendarPanel.orderOut(nil)
             agendaPanel.orderOut(nil)
             visibilityItem.title = "Show Desktop Board"
@@ -152,6 +161,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.orderOut(nil)
     }
 
+    private func pomodoroFrame() -> NSRect? {
+        guard let screen = agendaPanel?.screen ?? NSScreen.screens.first else { return nil }
+        let usable = screen.visibleFrame
+        let width = min(320, usable.width - 48)
+        let height = min(360, usable.height - 48)
+        return NSRect(x: usable.maxX - width - 24, y: usable.minY + 24, width: width, height: height)
+    }
+
+    @objc private func showPomodoro() {
+        guard let frame = pomodoroFrame() else { return }
+        if pomodoroPanel == nil {
+            let dismiss: () -> Void = { [weak self] in self?.pomodoroPanel?.orderOut(nil) }
+            let panel = desktopPanel(title: "Dayboard Pomodoro", level: .floating,
+                                     content: PomodoroPanel(timer: pomodoro, dismiss: dismiss))
+            panel.hasShadow = true
+            panel.collectionBehavior = [.moveToActiveSpace, .ignoresCycle, .fullScreenNone]
+            panel.onCancel = dismiss
+            pomodoroPanel = panel
+        }
+        pomodoroPanel?.setFrame(frame, display: true)
+        pomodoroPanel?.orderFrontRegardless()
+        pomodoroPanel?.makeKey()
+    }
+
     @objc private func refresh() {
         schedule.refresh()
         if model.connected {
@@ -162,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func woke() {
+        pomodoro.update()
         model.rollDate()
         schedule.refresh()
         Task { await model.refresh() }

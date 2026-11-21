@@ -176,6 +176,8 @@ struct CalendarWidget: View {
 struct AgendaWidget: View {
     @ObservedObject var model: BoardModel
     @ObservedObject var schedule: ScheduleModel
+    let pomodoro: PomodoroTimer
+    let openPomodoro: () -> Void
     let openSettings: () -> Void
     private var tone: WallpaperText { WallpaperText(light: schedule.lightText) }
 
@@ -469,6 +471,7 @@ struct AgendaWidget: View {
                 .buttonStyle(.plain)
                 .disabled(model.journalBusy)
                 .help(model.journalProblem ?? "Today’s Daily Journal")
+                PomodoroButton(timer: pomodoro, action: openPomodoro)
                 Spacer(minLength: 3)
                 if model.busy {
                     ProgressView().controlSize(.small)

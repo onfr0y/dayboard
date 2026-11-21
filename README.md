@@ -4,6 +4,8 @@ Dayboard is a native macOS menu bar app that lays a calendar, schedule, tasks an
 
 Choose **Show less** to collapse Schedule and Tasks together, or collapse Tasks and Good Habits separately. A collapsed section shows its heading and a **Show** control. Dayboard remembers these choices.
 
+Open **Pomodoro** from the desktop or the Dayboard menu bar icon. Focus and break lengths default to 25 and 5 minutes and can each be set from 1 to 180 minutes. The timer keeps going while its panel is closed. Dayboard plays a sound at the end of a session and readies the next one for you to start.
+
 ## Install
 
 Download the macOS ZIP for your processor from the repository's Releases page. Extract it, move Dayboard.app to Applications and open it. The app requires macOS 14 or later. Release builds are ad-hoc signed and are intended for local installation. The menu bar calendar icon opens Settings, changes the text colour and hides or shows the board.
