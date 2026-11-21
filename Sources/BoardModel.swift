@@ -13,8 +13,15 @@ final class BoardModel: ObservableObject {
     @Published var month: Date
     @Published var snapshot: Snapshot?
     @Published var habitSnapshot: HabitSnapshot?
-    @Published var showAllScheduleEvents = false
-    @Published var showAllHabits = false
+    @Published var scheduleCollapsed = UserDefaults.standard.bool(forKey: "scheduleCollapsed") {
+        didSet { UserDefaults.standard.set(scheduleCollapsed, forKey: "scheduleCollapsed") }
+    }
+    @Published var tasksCollapsed = UserDefaults.standard.bool(forKey: "tasksCollapsed") {
+        didSet { UserDefaults.standard.set(tasksCollapsed, forKey: "tasksCollapsed") }
+    }
+    @Published var habitsCollapsed = UserDefaults.standard.bool(forKey: "habitsCollapsed") {
+        didSet { UserDefaults.standard.set(habitsCollapsed, forKey: "habitsCollapsed") }
+    }
     @Published var habitProblem: String?
     @Published private(set) var pendingCheckIns: [PendingCheckIn] = []
     @Published private(set) var checkInProblem: String?

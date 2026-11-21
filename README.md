@@ -2,6 +2,8 @@
 
 Dayboard is a native macOS menu bar app that lays a calendar, schedule, tasks and Good Habits over your existing desktop wallpaper. Select a date to update the agenda and open a two-day calendar timeline. Events appear as blocks on an hourly grid. Click a good habit to log a check-in from the desktop.
 
+Choose **Show less** to collapse Schedule and Tasks together, or collapse Tasks and Good Habits separately. A collapsed section shows its heading and a **Show** control. Dayboard remembers these choices.
+
 ## Install
 
 Download the macOS ZIP for your processor from the repository's Releases page. Extract it, move Dayboard.app to Applications and open it. The app requires macOS 14 or later. Release builds are ad-hoc signed and are intended for local installation. The menu bar calendar icon opens Settings, changes the text colour and hides or shows the board.
