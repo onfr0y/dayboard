@@ -177,6 +177,7 @@ struct AgendaWidget: View {
     @ObservedObject var model: BoardModel
     @ObservedObject var schedule: ScheduleModel
     let openSettings: () -> Void
+    private let previewLimit = 5
     private var tone: WallpaperText { WallpaperText(light: schedule.lightText) }
 
     private var tasks: [NotionTask] {
@@ -236,11 +237,17 @@ struct AgendaWidget: View {
                         .help("Connect calendars synced to this Mac for live updates")
                 }
             }
+            if events.count > previewLimit {
+                restButton(expanded: model.showAllScheduleEvents, hiddenCount: events.count - previewLimit,
+                           section: "calendar events") { model.showAllScheduleEvents.toggle() }
+            }
             fittingList {
                 if events.isEmpty {
                     emptyMessage(schedule.hasCoverage(on: model.selected) ? "No calendar events." : "Calendar data unavailable.")
                 } else {
-                    ForEach(events) { event in eventRow(event) }
+                    ForEach(events.prefix(model.showAllScheduleEvents ? events.count : previewLimit)) { event in
+                        eventRow(event)
+                    }
                 }
                 HStack {
                     SectionLabel(title: "Tasks")
@@ -297,11 +304,15 @@ struct AgendaWidget: View {
                     Text("\(items.filter { checked.contains($0.id) }.count)/\(items.count)")
                 }
             }
+            if items.count > previewLimit {
+                restButton(expanded: model.showAllHabits, hiddenCount: items.count - previewLimit,
+                           section: "good habits") { model.showAllHabits.toggle() }
+            }
             fittingList {
                 if items.isEmpty {
                     emptyMessage(model.habitSnapshot == nil ? "Connect Notion to load habits." : "No habits in Notion.")
                 }
-                ForEach(items) { habit in
+                ForEach(items.prefix(model.showAllHabits ? items.count : previewLimit)) { habit in
                     habitRow(habit, checked: checked.contains(habit.id), pending: pending.contains(habit.id))
                 }
                 if let issue = model.checkInProblem {
@@ -325,6 +336,19 @@ struct AgendaWidget: View {
                 }
             }
         }
+    }
+
+    private func restButton(expanded: Bool, hiddenCount: Int, section: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(expanded ? "Show less" : "Show rest (\(hiddenCount))",
+                  systemImage: expanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(tone.ink.opacity(0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(expanded ? "Show fewer \(section)" : "Show \(hiddenCount) more \(section)")
     }
 
     private func habitRow(_ habit: GoodHabit, checked: Bool, pending: Bool) -> some View {
@@ -374,7 +398,7 @@ struct AgendaWidget: View {
         let list = VStack(alignment: .leading, spacing: 2, content: rows)
         return ViewThatFits(in: .vertical) {
             list.fixedSize(horizontal: false, vertical: true)
-            ScrollView { list }
+            ScrollView { list }.scrollIndicators(.visible)
         }
     }
 

@@ -13,6 +13,8 @@ final class BoardModel: ObservableObject {
     @Published var month: Date
     @Published var snapshot: Snapshot?
     @Published var habitSnapshot: HabitSnapshot?
+    @Published var showAllScheduleEvents = false
+    @Published var showAllHabits = false
     @Published var habitProblem: String?
     @Published private(set) var pendingCheckIns: [PendingCheckIn] = []
     @Published private(set) var checkInProblem: String?
