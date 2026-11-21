@@ -82,7 +82,7 @@ func dayKey(_ date: Date, in calendar: Calendar) -> String {
 }
 
 enum NotionFailure: LocalizedError {
-    case http(Int), format, keychain(OSStatus), missingToken, checkInAccess, missingConfiguration
+    case http(Int), format, keychain(OSStatus), missingToken, checkInAccess, missingConfiguration, journalAccess
 
     var errorDescription: String? {
         switch self {
@@ -95,6 +95,7 @@ enum NotionFailure: LocalizedError {
         case .missingToken: "Enter your Notion token to connect."
         case .missingConfiguration: "Import your Notion configuration in Dayboard Settings."
         case .checkInAccess: "Give the Notion connection read access to Good Habits, Activity Log and Character, and permission to insert into Activity Log."
+        case .journalAccess: "Give the Notion connection access to the Daily Journal data source and permission to create pages."
         }
     }
 }
@@ -142,6 +143,49 @@ enum NotionAPI {
         let pages = try await query(source: config.taskSourceID.uuidString, token: token,
                                     filter: ["property": "Action Date", "date": ["is_not_empty": true]])
         return Snapshot(fetchedAt: Date(), tasks: pages.compactMap(\.task))
+    }
+
+    static func dailyJournal(
+        on date: Date, calendar: Calendar, sourceID: UUID, templateID: UUID?,
+        token: String, createIfMissing: Bool, session: URLSession = .shared
+    ) async throws -> URL? {
+        let first = calendar.startOfDay(for: date)
+        let last = calendar.date(byAdding: .day, value: 1, to: first)!
+        let today = dayKey(first, in: calendar)
+        let source = sourceID.uuidString.lowercased()
+        // Fetch the local date and nearby timed entries, then check each in the same timezone.
+        let previous = dayKey(calendar.date(byAdding: .day, value: -1, to: first)!, in: calendar)
+        let following = dayKey(last, in: calendar)
+        do {
+            let pages = try await query(source: source, token: token, filter: ["and": [
+                ["property": "Date", "date": ["on_or_after": previous]],
+                ["property": "Date", "date": ["on_or_before": following]]
+            ]], session: session)
+            let matches = pages.filter {
+                guard $0.in_trash != true, let start = $0.properties["Date"]?.date?.start else { return false }
+                return notionDay(start, in: calendar) == first
+            }
+            if let existing = matches.min(by: { $0.url.absoluteString < $1.url.absoluteString }) {
+                return existing.url
+            }
+            guard createIfMissing else { return nil }
+
+            let body: [String: Any] = [
+                "parent": ["type": "data_source_id", "data_source_id": source],
+                "properties": ["Date": ["date": ["start": today]]],
+                "template": templateID.map { ["type": "template_id", "template_id": $0.uuidString.lowercased()] }
+                    ?? ["type": "default"]
+            ]
+            var create = request(path: "pages", token: token, method: "POST")
+            create.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let response = try await send(create, session: session, rateLimitRetry: false)
+            struct CreatedJournal: Decodable { let url: URL }
+            return try JSONDecoder().decode(CreatedJournal.self, from: response).url
+        } catch NotionFailure.http(403) {
+            throw NotionFailure.journalAccess
+        } catch NotionFailure.http(404) {
+            throw NotionFailure.journalAccess
+        }
     }
 
     static func fetchHabits(token: String, day: Date, calendar: Calendar) async throws -> (HabitSnapshot, String?) {

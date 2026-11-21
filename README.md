@@ -1,6 +1,6 @@
 # Dayboard
 
-Dayboard is a native macOS menu bar app that lays a calendar, schedule, tasks and Good Habits over your existing desktop wallpaper. Select a date to see its schedule and tasks. Click a good habit to log a check-in from the desktop.
+Dayboard is a native macOS menu bar app that lays a calendar, schedule, tasks and Good Habits over your existing desktop wallpaper. Select a date to update the agenda and open a two-day calendar timeline. Events appear as blocks on an hourly grid. Click a good habit to log a check-in from the desktop.
 
 ## Install
 
@@ -18,10 +18,13 @@ Dayboard supports the LiFE RPG-style Notion schema below. Create a personal API 
 | Good Habits | `Good Habit` title |
 | Activity Log | `Activity` title, `Date` date, `Good Habit` relation, `Character` relation, `History` checkbox, `Type` rich text |
 | Character | The character profile linked to new habit check-ins |
+| Daily Journal (optional) | `Date` date and a template for new entries |
 
 Copy [notion-config.example.json](notion-config.example.json) to `notion-config.json`. Replace the sample UUIDs with the four Notion **data source IDs** and the **page ID** of your character profile. Optional link fields are `tasksURL`, `habitsURL`, `habitSourceURL`, `activityURL` and `characterURL`. Import the file in Dayboard Settings, then enter your token in the secure field. Dayboard stores the token in macOS Keychain. The configuration, local snapshots and pending check-ins are stored in the local Dayboard Application Support folder.
 
 A check-in queues locally on click. Dayboard checks for an existing entry for that habit and day before creating a new entry in Activity Log. A tick appears after Notion accepts the check-in or Dayboard finds an existing entry.
+
+To enable **Daily Journal**, add the optional `journalSourceID` to your configuration and give the Notion connection permission to read the source and create pages. Set `journalTemplateID` to select a specific template, or leave it out to use the source’s default template. You can also set `journalURL` for a shortcut in Settings. Dayboard uses your Mac’s local date. It opens an existing entry or offers to create today’s entry using the template.
 
 ## Build
 

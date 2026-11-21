@@ -11,6 +11,9 @@ struct NotionConfiguration: Codable {
     let habitSourceURL: URL?
     let activityURL: URL?
     let characterURL: URL?
+    let journalSourceID: UUID?
+    let journalTemplateID: UUID?
+    let journalURL: URL?
 
     static var location: URL {
         URL.applicationSupportDirectory.appending(path: "Dayboard/notion-config.json")
@@ -27,7 +30,8 @@ struct NotionConfiguration: Codable {
 
     static func read(from url: URL) throws -> Self {
         let config = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
-        for candidate in [config.tasksURL, config.habitsURL, config.habitSourceURL, config.activityURL, config.characterURL].compactMap({ $0 }) {
+        for candidate in [config.tasksURL, config.habitsURL, config.habitSourceURL, config.activityURL,
+                          config.characterURL, config.journalURL].compactMap({ $0 }) {
             guard candidate.scheme == "https", let host = candidate.host,
                   host == "notion.so" || host.hasSuffix(".notion.so") || host == "app.notion.com" else {
                 throw NotionFailure.format

@@ -117,7 +117,8 @@ final class ScheduleModel: ObservableObject {
     }
 
     func hasCoverage(on day: Date) -> Bool {
-        if !nativeCalendarNames.isEmpty && calendar.isDate(month, equalTo: day, toGranularity: .month) {
+        if !nativeCalendarNames.isEmpty, let range = calendar.dateInterval(of: .month, for: month),
+           day >= range.start && day <= range.end {
             return true
         }
         guard let snapshot else { return false }
@@ -169,7 +170,8 @@ final class ScheduleModel: ObservableObject {
             nativeEvents = []
             return
         }
-        let predicate = store.predicateForEvents(withStart: range.start, end: range.end, calendars: calendars)
+        let end = calendar.date(byAdding: .day, value: 1, to: range.end) ?? range.end
+        let predicate = store.predicateForEvents(withStart: range.start, end: end, calendars: calendars)
         nativeEvents = store.events(matching: predicate).compactMap { event in
             guard event.status != .canceled, event.attendees?.contains(where: {
                 $0.isCurrentUser && $0.participantStatus == .declined

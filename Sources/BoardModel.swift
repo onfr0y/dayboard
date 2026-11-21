@@ -4,6 +4,10 @@ import ServiceManagement
 
 @MainActor
 final class BoardModel: ObservableObject {
+    enum JournalStatus {
+        case unchecked, missing, available(URL)
+    }
+
     @Published var today: Date
     @Published var selected: Date
     @Published var month: Date
@@ -19,6 +23,10 @@ final class BoardModel: ObservableObject {
     @Published var loginProblem: String?
     @Published var tokenDraft = ""
     @Published private(set) var notionConfiguration = NotionConfiguration.current
+    @Published private(set) var journalBusy = false
+    @Published private(set) var journalProblem: String?
+    @Published private var journalStatus = JournalStatus.unchecked
+    private var journalDay: String?
 
     let calendar: Calendar
     private var token: String?
@@ -123,14 +131,17 @@ final class BoardModel: ObservableObject {
         }
         await refreshHabits(token: token)
         await flushCheckIns(token: token)
+        await updateJournal()
     }
 
     func importNotionConfiguration(from url: URL) async {
-        guard !busy else { return }
+        guard !busy, !journalBusy else { return }
         do {
             try NotionConfiguration.importFile(url)
             notionConfiguration = NotionConfiguration.current
             problem = nil
+            journalStatus = .unchecked
+            journalProblem = nil
             await refresh()
         } catch {
             problem = "Dayboard could not read the Notion configuration. Check the IDs and links in the JSON file."
@@ -138,7 +149,7 @@ final class BoardModel: ObservableObject {
     }
 
     func connect(_ input: String) async -> Bool {
-        guard !busy else { return false }
+        guard !busy, !journalBusy else { return false }
         let candidate = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty else {
             problem = NotionFailure.missingToken.localizedDescription
@@ -155,6 +166,7 @@ final class BoardModel: ObservableObject {
             problem = writeCache(fresh, to: cacheURL) ? nil : "The local task cache could not be saved."
             await refreshHabits(token: candidate)
             await flushCheckIns(token: candidate)
+            await updateJournal()
             return true
         } catch {
             problem = error.localizedDescription
@@ -163,15 +175,71 @@ final class BoardModel: ObservableObject {
     }
 
     func disconnect() {
-        guard !busy else { return }
+        guard !busy, !journalBusy else { return }
         do {
             try TokenStore.remove()
             token = nil
             connected = false
             problem = nil
             habitProblem = nil
+            journalStatus = .unchecked
+            journalProblem = nil
         } catch {
             problem = error.localizedDescription
+        }
+    }
+
+    var dailyJournalStatus: JournalStatus {
+        journalDay == dayKey(today, in: calendar) ? journalStatus : .unchecked
+    }
+
+    var journalAction: String {
+        if journalBusy { return "Checking journal…" }
+        guard connected, notionConfiguration?.journalSourceID != nil else { return "Connect journal" }
+        switch dailyJournalStatus {
+        case .unchecked: return "Check journal"
+        case .missing: return "Create journal"
+        case .available: return "Open journal"
+        }
+    }
+
+    func useJournal(openSettings: () -> Void) async {
+        rollDate()
+        guard connected, notionConfiguration?.journalSourceID != nil else {
+            openSettings()
+            return
+        }
+        switch dailyJournalStatus {
+        case .available(let url):
+            NSWorkspace.shared.open(url)
+        case .missing:
+            if let url = await updateJournal(createIfMissing: true) { NSWorkspace.shared.open(url) }
+        case .unchecked:
+            await updateJournal()
+        }
+    }
+
+    @discardableResult
+    private func updateJournal(createIfMissing: Bool = false) async -> URL? {
+        guard !journalBusy, let token, let config = notionConfiguration,
+              let source = config.journalSourceID else { return nil }
+        let day = today
+        let dateKey = dayKey(day, in: calendar)
+        journalBusy = true
+        defer { journalBusy = false }
+        do {
+            let result = try await NotionAPI.dailyJournal(on: day, calendar: calendar, sourceID: source,
+                                                          templateID: config.journalTemplateID, token: token,
+                                                          createIfMissing: createIfMissing)
+            journalDay = dateKey
+            journalStatus = result.map(JournalStatus.available) ?? .missing
+            journalProblem = nil
+            return result
+        } catch {
+            journalProblem = error.localizedDescription
+            // A lost response may still mean Notion created the page. Look it up before offering another create.
+            journalStatus = .unchecked
+            return nil
         }
     }
 

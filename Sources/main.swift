@@ -1,10 +1,16 @@
 import AppKit
+import QuartzCore
 import ServiceManagement
 import SwiftUI
 
 final class DesktopPanel: NSPanel {
+    var onCancel: (() -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        if let onCancel { onCancel() } else { super.cancelOperation(sender) }
+    }
 }
 
 @MainActor
@@ -13,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var schedule: ScheduleModel!
     private var calendarPanel: DesktopPanel!
     private var agendaPanel: DesktopPanel!
+    private var timelinePanel: DesktopPanel?
     private var settings: NSWindow?
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
@@ -33,7 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         schedule = ScheduleModel(seed: calendarSeed, month: model.month, calendar: model.calendar)
         let widgetLevel = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
         calendarPanel = desktopPanel(title: "Dayboard Calendar", level: widgetLevel,
-                                     content: CalendarWidget(model: model, schedule: schedule))
+                                     content: CalendarWidget(model: model, schedule: schedule) { [weak self] in
+            self?.showTimeline()
+        })
         agendaPanel = desktopPanel(title: "Dayboard Agenda", level: widgetLevel,
                                    content: AgendaWidget(model: model, schedule: schedule) { [weak self] in self?.showSettings() })
         positionPanel()
@@ -44,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.toolTip = "Dayboard"
         let menu = NSMenu()
         visibilityItem = menu.addItem(withTitle: "Hide Desktop Board", action: #selector(toggleBoard), keyEquivalent: "")
+        menu.addItem(withTitle: "Show Calendar Timeline", action: #selector(showTimeline), keyEquivalent: "")
         menu.addItem(withTitle: "Refresh Tasks", action: #selector(refresh), keyEquivalent: "r")
         menu.addItem(withTitle: "Connect Mac Calendar…", action: #selector(connectCalendar), keyEquivalent: "")
         menu.addItem(withTitle: "Switch Text Colour", action: #selector(switchTextColour), keyEquivalent: "")
@@ -66,6 +76,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidChangeScreenParameters(_ notification: Notification) {
         positionPanel()
+        if let timelinePanel, timelinePanel.isVisible, let frame = timelineFrame() {
+            timelinePanel.setFrame(frame, display: true)
+        }
     }
 
     private func positionPanel() {
@@ -103,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func toggleBoard() {
         if calendarPanel.isVisible {
+            closeTimeline()
             calendarPanel.orderOut(nil)
             agendaPanel.orderOut(nil)
             visibilityItem.title = "Show Desktop Board"
@@ -110,6 +124,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showBoard()
             visibilityItem.title = "Hide Desktop Board"
         }
+    }
+
+    private func timelineFrame() -> NSRect? {
+        guard let screen = calendarPanel?.screen ?? NSScreen.screens.first else { return nil }
+        let usable = screen.visibleFrame
+        let margin = min(24, usable.width * 0.025)
+        return NSRect(x: usable.minX + margin, y: usable.minY + margin,
+                      width: min(590, usable.width - margin * 2),
+                      height: min(595, usable.height - margin * 2))
+    }
+
+    @objc private func showTimeline() {
+        guard let target = timelineFrame() else { return }
+        schedule.showMonth(model.month)
+        if let timelinePanel, timelinePanel.isVisible {
+            timelinePanel.makeKeyAndOrderFront(nil)
+            return
+        }
+        let panel = desktopPanel(title: "Dayboard Calendar Timeline", level: .floating,
+                                 content: CalendarTimeline(model: model, schedule: schedule) { [weak self] in
+            self?.closeTimeline()
+        })
+        panel.hasShadow = true
+        panel.collectionBehavior = [.moveToActiveSpace, .ignoresCycle, .fullScreenNone]
+        panel.onCancel = { [weak self] in self?.closeTimeline() }
+        timelinePanel = panel
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            panel.setFrame(target, display: true)
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
+        panel.setFrame(target.offsetBy(dx: -35, dy: -105), display: false)
+        panel.alphaValue = 0
+        panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.36
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(target, display: true)
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    private func closeTimeline() {
+        guard let panel = timelinePanel else { return }
+        timelinePanel = nil
+        panel.orderOut(nil)
     }
 
     @objc private func refresh() {

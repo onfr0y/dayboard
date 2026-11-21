@@ -46,6 +46,11 @@ struct BoardSettings: View {
                         .foregroundStyle(.secondary)
                 }
                 if let habitProblem = model.habitProblem { Text(habitProblem).foregroundStyle(.red) }
+                if let journalProblem = model.journalProblem { Text(journalProblem).foregroundStyle(.red) }
+                if model.notionConfiguration?.journalSourceID != nil {
+                    Text("Daily Journal uses the date on this Mac. Give your connection read and create access to the journal’s data source.")
+                        .foregroundStyle(.secondary)
+                }
                 Link("Create a Notion API token", destination: URL(string: "https://www.notion.so/developers/tokens")!)
                 if let config = model.notionConfiguration {
                     HStack(spacing: 10) {
@@ -53,6 +58,7 @@ struct BoardSettings: View {
                         if let url = config.habitSourceURL ?? config.habitsURL { Link("Good Habits", destination: url) }
                         if let url = config.activityURL { Link("Activity Log", destination: url) }
                         if let url = config.characterURL { Link("Character", destination: url) }
+                        if let url = config.journalURL { Link("Journal", destination: url) }
                     }
                 }
                 if !model.pendingCheckIns.isEmpty {

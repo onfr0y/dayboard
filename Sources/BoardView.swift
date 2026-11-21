@@ -43,6 +43,7 @@ private struct GlyphButton: View {
 struct CalendarWidget: View {
     @ObservedObject var model: BoardModel
     @ObservedObject var schedule: ScheduleModel
+    let showTimeline: () -> Void
     private var tone: WallpaperText { WallpaperText(light: schedule.lightText) }
 
     private var monthDays: [Date?] {
@@ -66,22 +67,27 @@ struct CalendarWidget: View {
                 }
                 .foregroundStyle(tone.muted)
                 Rectangle().fill(tone.rule).frame(height: 1)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(model.calendar.component(.day, from: model.selected))")
-                        .font(.system(size: heroSize, weight: .light, design: .default))
-                        .monospacedDigit()
-                        .tracking(-0.085 * heroSize)
-                        .lineLimit(1)
-                        .padding(.leading, -6)
-                        .padding(.top, -10)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .accessibilityHidden(true)
-                    Text(model.selected.formatted(.dateTime.month(.wide).locale(british)))
-                        .font(.system(size: compact ? 28 : 42, weight: .light))
-                        .tracking(-1.45)
-                        .padding(.bottom, compact ? 6 : 11)
-                        .accessibilityLabel(model.selected.formatted(date: .complete, time: .omitted))
+                Button(action: showTimeline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(model.calendar.component(.day, from: model.selected))")
+                            .font(.system(size: heroSize, weight: .light, design: .default))
+                            .monospacedDigit()
+                            .tracking(-0.085 * heroSize)
+                            .lineLimit(1)
+                            .padding(.leading, -6)
+                            .padding(.top, -10)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .accessibilityHidden(true)
+                        Text(model.selected.formatted(.dateTime.month(.wide).locale(british)))
+                            .font(.system(size: compact ? 28 : 42, weight: .light))
+                            .tracking(-1.45)
+                            .padding(.bottom, compact ? 6 : 11)
+                            .accessibilityLabel(model.selected.formatted(date: .complete, time: .omitted))
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help("Show calendar timeline")
                 .accessibilityElement(children: .combine)
                 monthCalendar(compact: compact)
                 Spacer(minLength: 0)
@@ -126,6 +132,7 @@ struct CalendarWidget: View {
                         let today = date == model.today
                         Button {
                             model.selected = date
+                            showTimeline()
                         } label: {
                             VStack(spacing: 2) {
                                 Text("\(model.calendar.component(.day, from: date))")
@@ -415,6 +422,15 @@ struct AgendaWidget: View {
         VStack(alignment: .leading, spacing: 8) {
             Rectangle().fill(tone.rule).frame(height: 1)
             HStack(spacing: 10) {
+                Button {
+                    Task { await model.useJournal(openSettings: openSettings) }
+                } label: {
+                    Label(model.journalAction, systemImage: "book.closed")
+                }
+                .buttonStyle(.plain)
+                .disabled(model.journalBusy)
+                .help(model.journalProblem ?? "Today’s Daily Journal")
+                Spacer(minLength: 3)
                 if model.busy {
                     ProgressView().controlSize(.small)
                     Text("Syncing")
@@ -425,13 +441,12 @@ struct AgendaWidget: View {
                 } else {
                     Button("Enable live sync", action: openSettings).buttonStyle(.plain)
                 }
-                Spacer(minLength: 3)
                 if let url = model.notionConfiguration?.tasksURL {
                     Link(destination: url) { Label("Notion", systemImage: "arrow.up.right") }
                         .buttonStyle(.plain)
                 }
                 if model.connected {
-                    GlyphButton(symbol: "arrow.clockwise", label: "Refresh tasks and habits") { Task { await model.refresh() } }
+                    GlyphButton(symbol: "arrow.clockwise", label: "Refresh Notion data") { Task { await model.refresh() } }
                         .disabled(model.busy)
                 }
                 GlyphButton(symbol: "gearshape", label: "Dayboard settings", action: openSettings)
