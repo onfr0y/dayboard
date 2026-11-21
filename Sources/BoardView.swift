@@ -106,6 +106,7 @@ struct CalendarWidget: View {
             HStack(spacing: 5) {
                 SectionLabel(title: model.month.formatted(.dateTime.month(.wide).year().locale(british)))
                 Spacer()
+                GlyphButton(symbol: "rectangle.split.2x1", label: "Open two-day timeline", action: showTimeline)
                 if model.selected != model.today || model.month != model.monthStart(model.today) {
                     Button("Today", action: model.goToToday)
                         .buttonStyle(.plain)

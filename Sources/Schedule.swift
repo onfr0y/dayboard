@@ -11,6 +11,7 @@ struct ScheduleEvent: Codable, Identifiable {
     let end: String
     let allDay: Bool
     let url: URL?
+    var location: String? = nil
 
     var startTime: Date? { notionTimestamp(start) }
     var endTime: Date? { notionTimestamp(end) }
@@ -58,10 +59,10 @@ final class ScheduleModel: ObservableObject {
     private var observer: NSObjectProtocol?
     private var activationObserver: NSObjectProtocol?
 
-    init(seed: URL?, month: Date, calendar: Calendar) {
+    init(seed: URL?, month: Date, calendar: Calendar,
+         cache: URL = URL.applicationSupportDirectory.appending(path: "Dayboard/calendar.json")) {
         self.calendar = calendar
         self.month = month
-        let cache = URL.applicationSupportDirectory.appending(path: "Dayboard/calendar.json")
         if let data = try? Data(contentsOf: cache) {
             snapshot = try? JSONDecoder().decode(ScheduleSnapshot.self, from: data)
         }
@@ -180,7 +181,8 @@ final class ScheduleModel: ObservableObject {
             let last = event.isAllDay ? dayKey(end, in: calendar) : end.ISO8601Format()
             return ScheduleEvent(id: "\(event.eventIdentifier ?? event.calendarItemIdentifier)|\(first)",
                                  title: event.title ?? "Untitled event", calendar: event.calendar.title,
-                                 provider: "mac", start: first, end: last, allDay: event.isAllDay, url: nil)
+                                 provider: "mac", start: first, end: last, allDay: event.isAllDay, url: nil,
+                                 location: event.location)
         }
     }
 

@@ -1,17 +1,6 @@
 import AppKit
-import QuartzCore
 import ServiceManagement
 import SwiftUI
-
-final class DesktopPanel: NSPanel {
-    var onCancel: (() -> Void)?
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-
-    override func cancelOperation(_ sender: Any?) {
-        if let onCancel { onCancel() } else { super.cancelOperation(sender) }
-    }
-}
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -77,6 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidChangeScreenParameters(_ notification: Notification) {
         positionPanel()
         if let timelinePanel, timelinePanel.isVisible, let frame = timelineFrame() {
+            timelinePanel.stopReveal()
+            timelinePanel.alphaValue = 1
             timelinePanel.setFrame(frame, display: true)
         }
     }
@@ -131,15 +122,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let usable = screen.visibleFrame
         let margin = min(24, usable.width * 0.025)
         return NSRect(x: usable.minX + margin, y: usable.minY + margin,
-                      width: min(590, usable.width - margin * 2),
-                      height: min(595, usable.height - margin * 2))
+                      width: min(500, usable.width - margin * 2),
+                      height: min(530, usable.height - margin * 2))
     }
 
     @objc private func showTimeline() {
         guard let target = timelineFrame() else { return }
         schedule.showMonth(model.month)
         if let timelinePanel, timelinePanel.isVisible {
-            timelinePanel.makeKeyAndOrderFront(nil)
+            timelinePanel.orderFrontRegardless()
+            timelinePanel.makeKey()
             return
         }
         let panel = desktopPanel(title: "Dayboard Calendar Timeline", level: .floating,
@@ -150,25 +142,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.collectionBehavior = [.moveToActiveSpace, .ignoresCycle, .fullScreenNone]
         panel.onCancel = { [weak self] in self?.closeTimeline() }
         timelinePanel = panel
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            panel.setFrame(target, display: true)
-            panel.makeKeyAndOrderFront(nil)
-            return
-        }
-        panel.setFrame(target.offsetBy(dx: -35, dy: -105), display: false)
-        panel.alphaValue = 0
-        panel.makeKeyAndOrderFront(nil)
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.36
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().setFrame(target, display: true)
-            panel.animator().alphaValue = 1
-        }
+        panel.reveal(at: target)
     }
 
     private func closeTimeline() {
         guard let panel = timelinePanel else { return }
         timelinePanel = nil
+        panel.stopReveal()
         panel.orderOut(nil)
     }
 

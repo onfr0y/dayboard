@@ -158,7 +158,7 @@ struct CalendarTimeline: View {
             ScrollView {
                 ZStack(alignment: .topLeading) {
                     VStack(spacing: 0) {
-                        ForEach(0..<hours, id: \.self) { hour in
+                        ForEach(0...hours, id: \.self) { hour in
                             HStack(spacing: 0) {
                                 Text(range.start.addingTimeInterval(Double(hour) * 3_600)
                                     .formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).locale(timelineLocale)))
@@ -167,7 +167,7 @@ struct CalendarTimeline: View {
                                     .frame(width: labelWidth, alignment: .leading)
                                 Rectangle().fill(.white.opacity(0.14)).frame(height: 1)
                             }
-                            .frame(height: height, alignment: .top)
+                            .frame(height: hour == hours ? 16 : height, alignment: .top)
                             .id(hour)
                             .accessibilityHidden(true)
                         }
@@ -178,7 +178,8 @@ struct CalendarTimeline: View {
                             let width = max(1, (geometry.size.width - labelWidth) / CGFloat(block.laneCount))
                             let duration = CGFloat(block.length / 3_600) * height
                             eventCard(block.event, for: day, detail: timeLabel(block.event),
-                                      showDetail: duration > 39 && width > 85)
+                                      showDetail: duration > 39 && width > 85,
+                                      showLocation: duration > 60 && width > 110)
                                 .frame(width: max(1, width - 3), height: max(1, duration - 2), alignment: .top)
                                 .offset(x: labelWidth + CGFloat(block.lane) * width,
                                         y: CGFloat(block.offset / 3_600) * height + 1)
@@ -192,14 +193,15 @@ struct CalendarTimeline: View {
                                     Circle().fill(.white).frame(width: 6, height: 6)
                                     Rectangle().fill(.white).frame(height: 1)
                                 }
-                                .offset(x: labelWidth - 4, y: CGFloat(context.date.timeIntervalSince(range.start) / 3_600) * height)
+                                .padding(.leading, labelWidth - 4)
+                                .offset(y: CGFloat(context.date.timeIntervalSince(range.start) / 3_600) * height)
                             }
                         }
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                     }
                 }
-                .frame(height: CGFloat(hours) * height)
+                .frame(height: CGFloat(hours) * height + 16)
             }
             .scrollIndicators(.hidden)
             .onAppear {
@@ -212,7 +214,8 @@ struct CalendarTimeline: View {
         }
     }
 
-    private func eventCard(_ event: ScheduleEvent, for day: Date, detail: String, showDetail: Bool) -> some View {
+    private func eventCard(_ event: ScheduleEvent, for day: Date, detail: String, showDetail: Bool,
+                           showLocation: Bool = false) -> some View {
         Button {
             event.open(on: day)
         } label: {
@@ -231,6 +234,12 @@ struct CalendarTimeline: View {
                             .foregroundStyle(.white.opacity(0.74))
                             .lineLimit(1)
                     }
+                    if showLocation, let location = event.location, !location.isEmpty {
+                        Text(location)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.66))
+                            .lineLimit(1)
+                    }
                 }
                 .padding(.vertical, 2)
                 Spacer(minLength: 0)
@@ -245,7 +254,7 @@ struct CalendarTimeline: View {
         .clipped()
         .accessibilityLabel(event.title)
         .accessibilityValue(detail)
-        .help("\(event.title) · \(detail)")
+        .help([event.title, detail, event.location].compactMap { $0 }.joined(separator: " · "))
     }
 
     private func timeLabel(_ event: ScheduleEvent) -> String {
