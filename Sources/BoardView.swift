@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 private let british = Locale(identifier: "en_GB")
@@ -368,7 +369,9 @@ struct AgendaWidget: View {
     private func habitRow(_ habit: GoodHabit, checked: Bool, pending: Bool) -> some View {
         let title = habit.title.isEmpty ? "Untitled habit" : habit.title
         return Button {
-            model.checkIn(habit)
+            if model.checkIn(habit) {
+                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(checked ? "✓" : pending ? "…" : "○")

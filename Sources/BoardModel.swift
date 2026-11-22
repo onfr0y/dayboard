@@ -288,19 +288,20 @@ final class BoardModel: ObservableObject {
         return Set(pendingCheckIns.filter { $0.day == day }.map(\.habitID))
     }
 
-    func checkIn(_ habit: GoodHabit) {
+    func checkIn(_ habit: GoodHabit) -> Bool {
         rollDate()
         let entry = PendingCheckIn(habitID: habit.id, clickedAt: Date(), timeZone: calendar.timeZone.identifier)
         guard habitCheckIns?.contains(habit.id) != true,
-              !pendingCheckIns.contains(where: { $0.id == entry.id }) else { return }
+              !pendingCheckIns.contains(where: { $0.id == entry.id }) else { return false }
         let queue = pendingCheckIns + [entry]
         guard writeCache(queue, to: checkInQueueURL) else {
             checkInProblem = "Dayboard couldn’t save the check-in on this Mac."
-            return
+            return false
         }
         pendingCheckIns = queue
         checkInProblem = nil
         Task { await syncCheckIns() }
+        return true
     }
 
     func syncCheckIns() async {

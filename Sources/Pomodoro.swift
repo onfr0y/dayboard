@@ -140,11 +140,11 @@ struct PomodoroPanel: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button(action: dismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 19))
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .modifier(PomodoroGlassChrome(height: 25))
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel("Close Pomodoro")
             }
@@ -177,7 +177,6 @@ struct PomodoroPanel: View {
             }
             .frame(maxWidth: .infinity)
             controls
-                .controlSize(.large)
                 .frame(maxWidth: .infinity)
             Divider()
             duration("Focus minutes", phase: .focus)
@@ -197,16 +196,17 @@ struct PomodoroPanel: View {
     @ViewBuilder private var controls: some View {
         if #available(macOS 26, *) {
             GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 10) {
-                    transport.buttonStyle(.glassProminent)
-                    reset.buttonStyle(.glass)
-                }
+                transportButtons
             }
         } else {
-            HStack(spacing: 10) {
-                transport.buttonStyle(.borderedProminent)
-                reset.buttonStyle(.bordered)
-            }
+            transportButtons
+        }
+    }
+
+    private var transportButtons: some View {
+        HStack(spacing: 10) {
+            transport.modifier(PomodoroGlassChrome(tint: .blue.opacity(0.40), height: 34))
+            reset.modifier(PomodoroGlassChrome(height: 34))
         }
     }
 
@@ -255,9 +255,31 @@ struct PomodoroButton: View {
             Label(timer.started ? timer.timeLabel : "Pomodoro", systemImage: "timer")
                 .monospacedDigit()
         }
-        .buttonStyle(.plain)
+        .modifier(PomodoroGlassChrome(height: 25))
         .accessibilityLabel("Open Pomodoro timer")
         .accessibilityValue(timer.started ? timer.timeLabel : "")
         .help(timer.started ? "\(timer.phase.rawValue) · \(timer.timeLabel)" : "Open Pomodoro timer")
+    }
+}
+
+private struct PomodoroGlassChrome: ViewModifier {
+    var tint: Color? = nil
+    var height: CGFloat
+
+    func body(content: Content) -> some View {
+        let capsule = Capsule()
+        let control = content
+            .controlSize(height > 25 ? .large : .small)
+            .frame(minHeight: height)
+            .background(tint ?? .white.opacity(0.10), in: capsule)
+            .overlay {
+                capsule.strokeBorder(.white.opacity(0.24), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+        if #available(macOS 26, *) {
+            control.buttonStyle(.glass)
+        } else {
+            control.buttonStyle(.bordered)
+        }
     }
 }
