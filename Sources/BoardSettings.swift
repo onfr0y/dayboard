@@ -19,6 +19,10 @@ struct BoardSettings: View {
                         .foregroundStyle(.secondary)
                 }
                 if let error = schedule.error { Text(error).foregroundStyle(.red) }
+                if model.connected {
+                    Text("Notion Calendar entries are refreshed from your Tasks database.")
+                        .foregroundStyle(.secondary)
+                }
             }
             Section("Notion") {
                 Button(model.notionConfiguration == nil ? "Import Notion configuration…" : "Replace Notion configuration…",
@@ -48,7 +52,7 @@ struct BoardSettings: View {
                 if let problem = model.problem {
                     Text(problem).foregroundStyle(.red)
                 } else if model.connected {
-                    Text("Refreshes every five minutes.").foregroundStyle(.secondary)
+                    Text("Refreshes automatically every minute.").foregroundStyle(.secondary)
                 } else {
                     Text("Use a Notion API token with read access to Tasks, Good Habits, Activity Log and Character. For check-ins, allow the connection to insert into Activity Log.")
                         .foregroundStyle(.secondary)

@@ -86,13 +86,13 @@ final class BoardModel: ObservableObject {
         Task {
             await restoreSavedToken()
             await refresh()
-            var nextRefresh = Date().addingTimeInterval(300)
+            var nextRefresh = Date().addingTimeInterval(60)
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
                 let changed = rollDate()
                 if changed || Date() >= nextRefresh {
                     await refresh()
-                    nextRefresh = Date().addingTimeInterval(300)
+                    nextRefresh = Date().addingTimeInterval(60)
                 }
             }
         }

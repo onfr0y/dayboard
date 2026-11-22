@@ -490,9 +490,12 @@ struct AgendaWidget: View {
                     Link(destination: url) { Label("Notion", systemImage: "arrow.up.right") }
                         .buttonStyle(.plain)
                 }
-                if model.connected {
-                    GlyphButton(symbol: "arrow.clockwise", label: "Refresh Notion data") { Task { await model.refresh() } }
-                        .disabled(model.busy)
+                if model.connected || schedule.canReadMacCalendar {
+                    GlyphButton(symbol: "arrow.clockwise", label: "Refresh Dayboard") {
+                        schedule.refreshFromSources()
+                        Task { await model.refresh() }
+                    }
+                    .disabled(model.busy && !schedule.canReadMacCalendar)
                 }
                 GlyphButton(symbol: "gearshape", label: "Dayboard settings", action: openSettings)
             }

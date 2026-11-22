@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model = BoardModel(seed: seed, habitSeed: habitSeed)
         let calendarSeed = args.firstIndex(of: "--calendar-seed").flatMap { args.indices.contains($0 + 1) ? URL(filePath: args[$0 + 1]) : nil }
         schedule = ScheduleModel(seed: calendarSeed, month: model.month, calendar: model.calendar)
+        schedule.observeNotionTasks(model)
         let widgetLevel = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
         calendarPanel = desktopPanel(title: "Dayboard Calendar", level: widgetLevel,
                                      content: CalendarWidget(model: model, schedule: schedule) { [weak self] in
@@ -48,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         visibilityItem = menu.addItem(withTitle: "Hide Desktop Board", action: #selector(toggleBoard), keyEquivalent: "")
         menu.addItem(withTitle: "Show Calendar Timeline", action: #selector(showTimeline), keyEquivalent: "")
         menu.addItem(withTitle: "Show Pomodoro Timer", action: #selector(showPomodoro), keyEquivalent: "")
-        menu.addItem(withTitle: "Refresh Tasks", action: #selector(refresh), keyEquivalent: "r")
+        menu.addItem(withTitle: "Refresh Dayboard", action: #selector(refresh), keyEquivalent: "r")
         menu.addItem(withTitle: "Connect Mac Calendar…", action: #selector(connectCalendar), keyEquivalent: "")
         menu.addItem(withTitle: "Switch Text Colour", action: #selector(switchTextColour), keyEquivalent: "")
         menu.addItem(.separator())
@@ -212,10 +213,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func refresh() {
-        schedule.refresh()
+        schedule.refreshFromSources()
         if model.connected {
             Task { await model.refresh() }
-        } else {
+        } else if !schedule.canReadMacCalendar {
             showSettings()
         }
     }

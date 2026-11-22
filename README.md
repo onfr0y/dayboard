@@ -14,6 +14,8 @@ Download the macOS ZIP for your processor from the repository's Releases page. E
 
 Choose **Connect Mac Calendar** and grant calendar access to display calendars already synced to this Mac. Dayboard reads those calendars. The app can start automatically when you log in.
 
+Schedule and the two-day timeline also display `Action Date` entries from the connected Notion Tasks database. Dayboard refreshes Notion about once a minute. **Refresh Dayboard** immediately reloads the connected data sources.
+
 ## Connect Notion
 
 Dayboard supports the LiFE RPG-style Notion schema below. Create a personal API token or an internal connection with read access to these data sources and permission to insert rows into Activity Log for habit check-ins.

@@ -16,6 +16,24 @@ struct ScheduleEvent: Codable, Identifiable {
     var startTime: Date? { notionTimestamp(start) }
     var endTime: Date? { notionTimestamp(end) }
 
+    static func notionEntry(_ task: NotionTask, calendar: Calendar) -> Self? {
+        let allDay = task.start.count == 10
+        let end: String
+        if allDay {
+            guard let start = notionDay(task.start, in: calendar),
+                  let exclusiveEnd = calendar.date(byAdding: .day, value: 1,
+                      to: max(start, task.end.flatMap { notionDay($0, in: calendar) } ?? start)) else { return nil }
+            // Notion date ranges include their final day; the schedule uses exclusive end dates.
+            end = dayKey(exclusiveEnd, in: calendar)
+        } else {
+            guard let start = notionTimestamp(task.start) else { return nil }
+            end = task.end.flatMap(notionTimestamp).map { max(start, $0) }?.ISO8601Format() ?? task.start
+        }
+        return Self(id: "notion|\(task.id)", title: task.title.isEmpty ? "Untitled task" : task.title,
+                    calendar: "Notion Calendar", provider: "notion", start: task.start, end: end,
+                    allDay: allDay, url: task.url)
+    }
+
     func appears(on date: Date, in math: Calendar) -> Bool {
         guard let dayEnd = math.date(byAdding: .day, value: 1, to: date),
               let span = interval(in: math) else { return false }
@@ -46,6 +64,7 @@ struct ScheduleSnapshot: Codable {
 final class ScheduleModel: ObservableObject {
     @Published private(set) var snapshot: ScheduleSnapshot?
     @Published private(set) var nativeEvents: [ScheduleEvent] = []
+    @Published private(set) var notionEvents: [ScheduleEvent]?
     @Published private(set) var access = EKEventStore.authorizationStatus(for: .event)
     @Published private(set) var nativeCalendarNames = Set<String>()
     @Published private(set) var error: String?
@@ -58,6 +77,7 @@ final class ScheduleModel: ObservableObject {
     private var month: Date
     private var observer: NSObjectProtocol?
     private var activationObserver: NSObjectProtocol?
+    private var notionObservation: AnyCancellable?
 
     init(seed: URL?, month: Date, calendar: Calendar,
          cache: URL = URL.applicationSupportDirectory.appending(path: "Dayboard/calendar.json")) {
@@ -90,12 +110,20 @@ final class ScheduleModel: ObservableObject {
 
     var canReadMacCalendar: Bool { access == .fullAccess }
 
+    func observeNotionTasks(_ board: BoardModel) {
+        notionObservation = board.$snapshot.sink { [weak self] snapshot in
+            guard let self else { return }
+            self.notionEvents = snapshot?.tasks.compactMap { ScheduleEvent.notionEntry($0, calendar: self.calendar) }
+        }
+    }
+
     var visibleEvents: [ScheduleEvent] {
-        let fallback = (snapshot?.events ?? []).filter {
-            $0.provider == "notion" || !nativeCalendarNames.contains($0.calendar.lowercased())
+        let fallback = (snapshot?.events ?? []).filter { event in
+            if event.provider == "notion" { return notionEvents == nil }
+            return !nativeCalendarNames.contains(event.calendar.lowercased())
         }
         let nativeKeys = Set(nativeEvents.map(eventKey))
-        return nativeEvents + fallback.filter { !nativeKeys.contains(eventKey($0)) }
+        return nativeEvents + fallback.filter { !nativeKeys.contains(eventKey($0)) } + (notionEvents ?? [])
     }
 
     func events(on day: Date) -> [ScheduleEvent] {
@@ -107,7 +135,8 @@ final class ScheduleModel: ObservableObject {
     }
 
     func markedDays(_ days: [Date]) -> Set<Date> {
-        let spans = visibleEvents.compactMap { $0.interval(in: calendar) }
+        let spans = visibleEvents.filter { notionEvents == nil || $0.provider != "notion" }
+            .compactMap { $0.interval(in: calendar) }
         return Set(days.filter { day in
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { return false }
             return spans.contains { span in
@@ -118,6 +147,7 @@ final class ScheduleModel: ObservableObject {
     }
 
     func hasCoverage(on day: Date) -> Bool {
+        if notionEvents != nil { return true }
         if !nativeCalendarNames.isEmpty, let range = calendar.dateInterval(of: .month, for: month),
            day >= range.start && day <= range.end {
             return true
@@ -125,6 +155,13 @@ final class ScheduleModel: ObservableObject {
         guard let snapshot else { return false }
         let key = dayKey(day, in: calendar)
         return key >= snapshot.startDay && key < snapshot.endDay
+    }
+
+    func refreshFromSources() {
+        if EKEventStore.authorizationStatus(for: .event) == .fullAccess {
+            store.refreshSourcesIfNecessary()
+        }
+        refresh()
     }
 
     func showMonth(_ month: Date) {
