@@ -19,6 +19,7 @@ final class PomodoroTimer: ObservableObject {
     @Published private(set) var completedPhase: Phase?
     @Published private(set) var focusMinutes = 25
     @Published private(set) var breakMinutes = 5
+    private(set) var sessionSeconds = 25 * 60
 
     private let preferences: UserDefaults
     private let completion: () -> Void
@@ -86,7 +87,8 @@ final class PomodoroTimer: ObservableObject {
         stop()
         started = false
         completedPhase = nil
-        seconds = (phase == .focus ? focusMinutes : breakMinutes) * 60
+        sessionSeconds = (phase == .focus ? focusMinutes : breakMinutes) * 60
+        seconds = sessionSeconds
         timeLeft = TimeInterval(seconds)
     }
 
@@ -118,55 +120,65 @@ final class PomodoroTimer: ObservableObject {
 
 struct PomodoroPanel: View {
     @ObservedObject var timer: PomodoroTimer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let dismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
+        if #available(macOS 26, *) {
+            content
+        } else {
+            content
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28))
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 13) {
             HStack {
-                Label("Pomodoro", systemImage: "timer")
-                    .font(.system(size: 13, weight: .semibold))
+                Text("Pomodoro")
+                    .font(.headline)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button(action: dismiss) {
-                    Image(systemName: "xmark")
-                        .padding(5)
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 19))
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel("Close Pomodoro")
             }
-            HStack(spacing: 6) {
+            Picker("Session type", selection: Binding(get: { timer.phase }, set: { timer.select($0) })) {
                 ForEach(PomodoroTimer.Phase.allCases, id: \.self) { phase in
-                    Button(phase.rawValue) { timer.select(phase) }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .medium))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(.white.opacity(timer.phase == phase ? 0.18 : 0.06), in: Capsule())
-                        .accessibilityAddTraits(timer.phase == phase ? .isSelected : [])
-                        .disabled(timer.started)
+                    Text(phase.rawValue).tag(phase)
                 }
             }
-            VStack(alignment: .leading, spacing: 3) {
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .disabled(timer.started)
+
+            VStack(spacing: 4) {
                 Text(timer.timeLabel)
-                    .font(.system(size: 62, weight: .light))
+                    .font(.system(size: 64, weight: .light, design: .rounded))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: timer.seconds)
                     .accessibilityLabel("\(timer.seconds / 60) minutes, \(timer.seconds % 60) seconds")
                 if let phase = timer.completedPhase {
                     Text(phase == .focus ? "Focus complete" : "Break complete")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
+                ProgressView(value: Double(timer.seconds), total: Double(timer.sessionSeconds))
+                    .labelsHidden()
+                    .accessibilityHidden(true)
             }
-            HStack {
-                Button(timer.running ? "Pause" : timer.started ? "Resume" : "Start") {
-                    if timer.running { timer.pause() } else { timer.start() }
-                }
-                .buttonStyle(.borderedProminent)
-                Button("Reset") { timer.reset() }
-                    .buttonStyle(.bordered)
-                    .help("Reset to the chosen duration")
-            }
+            .frame(maxWidth: .infinity)
+            controls
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
             Divider()
             duration("Focus minutes", phase: .focus)
             duration("Break minutes", phase: .rest)
@@ -176,16 +188,45 @@ struct PomodoroPanel: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(20)
+        .padding(22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .foregroundStyle(.white)
-        .background(Color(white: 0.10).opacity(0.96), in: RoundedRectangle(cornerRadius: 23))
-        .overlay {
-            RoundedRectangle(cornerRadius: 23)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                .allowsHitTesting(false)
-        }
         .environment(\.colorScheme, .dark)
+    }
+
+    @ViewBuilder private var controls: some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 10) {
+                    transport.buttonStyle(.glassProminent)
+                    reset.buttonStyle(.glass)
+                }
+            }
+        } else {
+            HStack(spacing: 10) {
+                transport.buttonStyle(.borderedProminent)
+                reset.buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private var transport: some View {
+        Button {
+            if timer.running { timer.pause() } else { timer.start() }
+        } label: {
+            Label(timer.running ? "Pause" : timer.started ? "Resume" : "Start",
+                  systemImage: timer.running ? "pause.fill" : "play.fill")
+                .frame(minWidth: 92)
+                .foregroundStyle(.white)
+        }
+    }
+
+    private var reset: some View {
+        Button { timer.reset() } label: {
+            Label("Reset", systemImage: "arrow.counterclockwise")
+                .foregroundStyle(.white)
+        }
+        .help("Reset to the chosen duration")
     }
 
     private func duration(_ label: String, phase: PomodoroTimer.Phase) -> some View {

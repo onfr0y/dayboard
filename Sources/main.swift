@@ -164,8 +164,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func pomodoroFrame() -> NSRect? {
         guard let screen = agendaPanel?.screen ?? NSScreen.screens.first else { return nil }
         let usable = screen.visibleFrame
-        let width = min(320, usable.width - 48)
-        let height = min(360, usable.height - 48)
+        let width = min(340, usable.width - 48)
+        let height = min(382, usable.height - 48)
         return NSRect(x: usable.maxX - width - 24, y: usable.minY + 24, width: width, height: height)
     }
 
@@ -175,6 +175,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let dismiss: () -> Void = { [weak self] in self?.pomodoroPanel?.orderOut(nil) }
             let panel = desktopPanel(title: "Dayboard Pomodoro", level: .floating,
                                      content: PomodoroPanel(timer: pomodoro, dismiss: dismiss))
+            if #available(macOS 26, *), let content = panel.contentView {
+                let glass = NSGlassEffectView(frame: content.frame)
+                glass.cornerRadius = 28
+                glass.style = .regular
+                glass.appearance = NSAppearance(named: .darkAqua)
+                glass.tintColor = NSColor(white: 0.14, alpha: 0.30)
+                content.autoresizingMask = [.width, .height]
+                panel.contentView = glass
+                glass.contentView = content
+            }
             panel.hasShadow = true
             panel.collectionBehavior = [.moveToActiveSpace, .ignoresCycle, .fullScreenNone]
             panel.onCancel = dismiss
