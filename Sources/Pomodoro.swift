@@ -138,7 +138,11 @@ struct PomodoroPanel: View {
                 Text("Pomodoro")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
-                Spacer()
+                    .frame(maxWidth: .infinity, minHeight: 25, alignment: .leading)
+                    .overlay {
+                        PomodoroDragRegion()
+                            .accessibilityHidden(true)
+                    }
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
@@ -255,10 +259,28 @@ struct PomodoroButton: View {
             Label(timer.started ? timer.timeLabel : "Pomodoro", systemImage: "timer")
                 .monospacedDigit()
         }
-        .modifier(PomodoroGlassChrome(height: 25))
+        .buttonStyle(.plain)
         .accessibilityLabel("Open Pomodoro timer")
         .accessibilityValue(timer.started ? timer.timeLabel : "")
         .help(timer.started ? "\(timer.phase.rawValue) · \(timer.timeLabel)" : "Open Pomodoro timer")
+    }
+}
+
+struct PomodoroDragRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> DragView { DragView() }
+    func updateNSView(_ view: DragView, context: Context) {}
+
+    final class DragView: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .openHand)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
     }
 }
 

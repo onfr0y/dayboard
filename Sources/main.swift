@@ -75,8 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             timelinePanel.alphaValue = 1
             timelinePanel.setFrame(frame, display: true)
         }
-        if let pomodoroPanel, pomodoroPanel.isVisible, let frame = pomodoroFrame() {
-            pomodoroPanel.setFrame(frame, display: true)
+        if let pomodoroPanel, pomodoroPanel.isVisible {
+            recoverPomodoroPosition(pomodoroPanel)
         }
     }
 
@@ -170,8 +170,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func showPomodoro() {
-        guard let frame = pomodoroFrame() else { return }
         if pomodoroPanel == nil {
+            guard let frame = pomodoroFrame() else { return }
             let dismiss: () -> Void = { [weak self] in self?.pomodoroPanel?.orderOut(nil) }
             let panel = desktopPanel(title: "Dayboard Pomodoro", level: .floating,
                                      content: PomodoroPanel(timer: pomodoro, dismiss: dismiss))
@@ -188,11 +188,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panel.hasShadow = true
             panel.collectionBehavior = [.moveToActiveSpace, .ignoresCycle, .fullScreenNone]
             panel.onCancel = dismiss
+            panel.setFrame(frame, display: true)
+            panel.isMovable = true
+            panel.setFrameAutosaveName("Dayboard Pomodoro")
             pomodoroPanel = panel
         }
-        pomodoroPanel?.setFrame(frame, display: true)
-        pomodoroPanel?.orderFrontRegardless()
-        pomodoroPanel?.makeKey()
+        guard let panel = pomodoroPanel else { return }
+        recoverPomodoroPosition(panel)
+        panel.orderFrontRegardless()
+        panel.makeKey()
+    }
+
+    private func recoverPomodoroPosition(_ panel: DesktopPanel) {
+        let dragArea = NSRect(x: panel.frame.minX + 22, y: panel.frame.maxY - 47,
+                              width: panel.frame.width - 80, height: 25)
+        let titleVisible = NSScreen.screens.contains { screen in
+            let visible = dragArea.intersection(screen.visibleFrame)
+            return visible.width >= 44 && visible.height >= 12
+        }
+        if !titleVisible, let fallback = pomodoroFrame() {
+            panel.setFrame(fallback, display: true)
+        }
     }
 
     @objc private func refresh() {

@@ -6,7 +6,7 @@ Choose **Show less** to collapse Schedule and Tasks together, or collapse Tasks 
 
 Open **Pomodoro** from the desktop or the Dayboard menu bar icon. Focus and break lengths default to 25 and 5 minutes and can each be set from 1 to 180 minutes. The timer keeps going while its panel is closed. Dayboard plays a sound at the end of a session and readies the next one for you to start.
 
-The Pomodoro panel uses native Liquid Glass on macOS 26 and later.
+The Pomodoro panel uses native Liquid Glass on macOS 26 and later. Drag its title area to reposition the panel. Dayboard remembers where you leave it.
 
 ## Install
 
