@@ -12,10 +12,10 @@ struct BoardSettings: View {
             Section("Calendar") {
                 if schedule.nativeCalendarNames.isEmpty {
                     Button("Connect Mac Calendar") { Task { await schedule.connect() } }
-                    Text("Connect the accounts synced to Mac Calendar for live events.")
+                    Text("Add the same Google or iCloud accounts in macOS Internet Accounts and turn on Calendars to sync those events.")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Connected to Mac Calendar. Updates when your calendars change.")
+                    Text("Connected to Mac Calendar. Dayboard checks for calendar changes about once a minute.")
                         .foregroundStyle(.secondary)
                 }
                 if let error = schedule.error { Text(error).foregroundStyle(.red) }

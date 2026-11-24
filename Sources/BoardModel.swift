@@ -152,6 +152,46 @@ final class BoardModel: ObservableObject {
         await updateJournal()
     }
 
+    func createScheduledTask(_ fields: CalendarEventFields) async throws {
+        guard !busy else { throw CalendarEditError.syncing }
+        guard let token else { throw CalendarEditError.unavailable }
+        busy = true
+        defer { busy = false }
+        let created = try await NotionAPI.createScheduledTask(fields: fields, calendar: calendar, token: token)
+        let current = snapshot?.tasks ?? []
+        let updated = Snapshot(fetchedAt: snapshot?.fetchedAt ?? Date(), tasks: current + [created])
+        self.snapshot = updated
+        _ = writeCache(updated, to: cacheURL)
+    }
+
+    func updateScheduledTask(_ event: ScheduleEvent, original: CalendarEventFields,
+                             changes: CalendarEventFields) async throws {
+        guard !busy else { throw CalendarEditError.syncing }
+        guard let token, let url = event.url, event.provider == "notion" else { throw CalendarEditError.unavailable }
+        busy = true
+        defer { busy = false }
+        let saved = try await NotionAPI.updateScheduledTask(url: url, original: original, changes: changes,
+                                                            calendar: calendar, token: token)
+        if let snapshot {
+            let updated = Snapshot(fetchedAt: snapshot.fetchedAt, tasks: snapshot.tasks.map { $0.url == url ? saved : $0 })
+            self.snapshot = updated
+            _ = writeCache(updated, to: cacheURL)
+        }
+    }
+
+    func deleteScheduledTask(_ event: ScheduleEvent) async throws {
+        guard !busy else { throw CalendarEditError.syncing }
+        guard let token, let url = event.url, event.provider == "notion" else { throw CalendarEditError.unavailable }
+        busy = true
+        defer { busy = false }
+        try await NotionAPI.deleteScheduledTask(url: url, token: token)
+        if let snapshot {
+            let updated = Snapshot(fetchedAt: snapshot.fetchedAt, tasks: snapshot.tasks.filter { $0.url != url })
+            self.snapshot = updated
+            _ = writeCache(updated, to: cacheURL)
+        }
+    }
+
     func importNotionConfiguration(from url: URL) async {
         guard !busy, !journalBusy else { return }
         do {

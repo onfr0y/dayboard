@@ -150,6 +150,104 @@ enum NotionAPI {
         return Snapshot(fetchedAt: Date(), tasks: pages.compactMap(\.task))
     }
 
+    private static func pageID(from url: URL) throws -> UUID {
+        let id = String(url.lastPathComponent.replacingOccurrences(of: "-", with: "").suffix(32))
+        guard id.count == 32 else { throw CalendarEditError.unavailable }
+        let parts = [id.prefix(8), id.dropFirst(8).prefix(4), id.dropFirst(12).prefix(4),
+                     id.dropFirst(16).prefix(4), id.suffix(12)]
+        guard let pageID = UUID(uuidString: parts.joined(separator: "-")) else { throw CalendarEditError.unavailable }
+        return pageID
+    }
+
+    private static func actionDatePayload(_ fields: CalendarEventFields, calendar: Calendar) -> [String: Any] {
+        let start = fields.allDay ? dayKey(fields.start, in: calendar) : fields.start.ISO8601Format()
+        let end = fields.allDay ? dayKey(fields.end, in: calendar) : fields.end.ISO8601Format()
+        return ["date": ["start": start, "end": start == end ? NSNull() as Any : end as Any]]
+    }
+
+    static func createScheduledTask(
+        fields: CalendarEventFields, calendar: Calendar, token: String, session: URLSession = .shared
+    ) async throws -> NotionTask {
+        let config = try NotionConfiguration.require()
+        let title = fields.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, fields.start <= fields.end else { throw CalendarEditError.invalidDates }
+        let body: [String: Any] = [
+            "parent": ["type": "data_source_id", "data_source_id": config.taskSourceID.notionID],
+            "properties": [
+                "Tasks/Event": ["title": [["type": "text", "text": ["content": title]]]],
+                "Action Date": actionDatePayload(fields, calendar: calendar)
+            ]
+        ]
+        var create = request(path: "pages", token: token, method: "POST")
+        create.httpBody = try JSONSerialization.data(withJSONObject: body)
+        do {
+            let data = try await send(create, session: session, rateLimitRetry: false)
+            guard let saved = try JSONDecoder().decode(Page.self, from: data).task else {
+                throw NotionFailure.format
+            }
+            return saved
+        } catch NotionFailure.http(403) {
+            throw CalendarEditError.notionAccess
+        } catch NotionFailure.http(404) {
+            throw CalendarEditError.unavailable
+        }
+    }
+
+    static func updateScheduledTask(
+        url: URL, original: CalendarEventFields, changes: CalendarEventFields, calendar: Calendar,
+        token: String, session: URLSession = .shared
+    ) async throws -> NotionTask {
+        let pageID = try pageID(from: url)
+        let title = changes.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, changes.start <= changes.end else { throw CalendarEditError.invalidDates }
+        let path = "pages/\(pageID.notionID)"
+        let decoder = JSONDecoder()
+        do {
+            let data = try await send(request(path: path, token: token), session: session)
+            guard let task = try decoder.decode(Page.self, from: data).task,
+                  let event = ScheduleEvent.notionEntry(task, calendar: calendar),
+                  let current = CalendarEventFields(event: event, calendar: calendar) else {
+                throw CalendarEditError.conflict
+            }
+            var properties: [String: Any] = [:]
+            if changes.title != original.title {
+                guard current.title == original.title else { throw CalendarEditError.conflict }
+                properties["Tasks/Event"] = ["title": [["type": "text", "text": ["content": title]]]]
+            }
+            if changes.allDay != original.allDay || changes.start != original.start || changes.end != original.end {
+                guard current.allDay == original.allDay, current.start == original.start,
+                      current.end == original.end else { throw CalendarEditError.conflict }
+                properties["Action Date"] = actionDatePayload(changes, calendar: calendar)
+            }
+            if properties.isEmpty { return task }
+            var update = request(path: path, token: token, method: "PATCH")
+            update.httpBody = try JSONSerialization.data(withJSONObject: ["properties": properties])
+            guard let saved = try decoder.decode(Page.self, from: await send(update, session: session)).task else {
+                throw NotionFailure.format
+            }
+            return saved
+        } catch NotionFailure.http(403) {
+            throw CalendarEditError.notionAccess
+        } catch NotionFailure.http(404) {
+            throw CalendarEditError.unavailable
+        }
+    }
+
+    static func deleteScheduledTask(
+        url: URL, token: String, session: URLSession = .shared
+    ) async throws {
+        let pageID = try pageID(from: url)
+        var trash = request(path: "pages/\(pageID.notionID)", token: token, method: "PATCH")
+        trash.httpBody = try JSONSerialization.data(withJSONObject: ["in_trash": true])
+        do {
+            _ = try await send(trash, session: session)
+        } catch NotionFailure.http(403) {
+            throw CalendarEditError.notionAccess
+        } catch NotionFailure.http(404) {
+            throw CalendarEditError.unavailable
+        }
+    }
+
     static func dailyJournal(
         on date: Date, calendar: Calendar, sourceID: UUID, templateID: UUID?,
         token: String, createIfMissing: Bool, session: URLSession = .shared

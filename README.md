@@ -14,7 +14,7 @@ Download the macOS ZIP for your processor from the repository's Releases page. E
 
 Choose **Connect Mac Calendar** and grant calendar access to display calendars already synced to this Mac. Dayboard reads those calendars. The app can start automatically when you log in.
 
-Schedule and the two-day timeline also display `Action Date` entries from the connected Notion Tasks database. Dayboard refreshes Notion about once a minute. **Refresh Dayboard** immediately reloads the connected data sources.
+Click an event in Schedule or the timeline to edit its title, dates or delete it, or click **+** to add a new event. On the two-day timeline, drag an editable event up or down (or across to the next day) to reschedule in 15-minute steps, drag its bottom edge to resize its duration, and drag the timeline header to reposition the panel. Edits, additions and deletions to Notion entries are written to the connected Tasks database when the connection has permission to update it. Google and iCloud edits go through macOS Calendar. Add those accounts in macOS Internet Accounts, turn on Calendars, and grant Dayboard Calendar access. Events from a saved snapshot can be viewed until their calendar is connected. Dayboard checks for changes about once a minute. **Refresh Dayboard** requests an immediate refresh.
 
 ## Connect Notion
 

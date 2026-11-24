@@ -12,6 +12,7 @@ struct ScheduleEvent: Codable, Identifiable {
     let allDay: Bool
     let url: URL?
     var location: String? = nil
+    var nativeIdentifier: String? = nil
 
     var startTime: Date? { notionTimestamp(start) }
     var endTime: Date? { notionTimestamp(end) }
@@ -78,6 +79,7 @@ final class ScheduleModel: ObservableObject {
     private var observer: NSObjectProtocol?
     private var activationObserver: NSObjectProtocol?
     private var notionObservation: AnyCancellable?
+    private var refreshTask: Task<Void, Never>?
 
     init(seed: URL?, month: Date, calendar: Calendar,
          cache: URL = URL.applicationSupportDirectory.appending(path: "Dayboard/calendar.json")) {
@@ -106,6 +108,7 @@ final class ScheduleModel: ObservableObject {
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in Task { @MainActor in self?.refresh() } }
         refresh()
+        NSLog("Dayboard calendar access: %d; live calendars: %d", access.rawValue, nativeCalendarNames.count)
     }
 
     var canReadMacCalendar: Bool { access == .fullAccess }
@@ -164,13 +167,24 @@ final class ScheduleModel: ObservableObject {
         refresh()
     }
 
+    func startLiveRefresh() {
+        guard refreshTask == nil else { return }
+        refreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled, let self else { return }
+                self.refreshFromSources()
+            }
+        }
+    }
+
     func showMonth(_ month: Date) {
         guard self.month != month else { return }
         self.month = month
         refresh()
     }
 
-    func connect() async {
+    func connect(addAccount: Bool = false) async {
         access = EKEventStore.authorizationStatus(for: .event)
         if access == .denied || access == .restricted {
             if let settings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
@@ -180,7 +194,7 @@ final class ScheduleModel: ObservableObject {
         }
         if canReadMacCalendar {
             refresh()
-            if nativeCalendarNames.isEmpty,
+            if (addAccount || nativeCalendarNames.isEmpty),
                let accounts = URL(string: "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension") {
                 NSWorkspace.shared.open(accounts)
             }
@@ -193,6 +207,10 @@ final class ScheduleModel: ObservableObject {
             self.error = "Calendar access could not be requested. \(error.localizedDescription)"
         }
         refresh()
+        if addAccount && canReadMacCalendar,
+           let accounts = URL(string: "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension") {
+            NSWorkspace.shared.open(accounts)
+        }
     }
 
     func refresh() {
@@ -210,17 +228,99 @@ final class ScheduleModel: ObservableObject {
         }
         let end = calendar.date(byAdding: .day, value: 1, to: range.end) ?? range.end
         let predicate = store.predicateForEvents(withStart: range.start, end: end, calendars: calendars)
-        nativeEvents = store.events(matching: predicate).compactMap { event in
-            guard event.status != .canceled, event.attendees?.contains(where: {
-                $0.isCurrentUser && $0.participantStatus == .declined
-            }) != true, let start = event.startDate, let end = event.endDate else { return nil }
-            let first = event.isAllDay ? dayKey(start, in: calendar) : start.ISO8601Format()
-            let last = event.isAllDay ? dayKey(end, in: calendar) : end.ISO8601Format()
-            return ScheduleEvent(id: "\(event.eventIdentifier ?? event.calendarItemIdentifier)|\(first)",
-                                 title: event.title ?? "Untitled event", calendar: event.calendar.title,
-                                 provider: "mac", start: first, end: last, allDay: event.isAllDay, url: nil,
-                                 location: event.location)
+        nativeEvents = store.events(matching: predicate).compactMap(nativeEntry)
+    }
+
+    struct WritableCalendar: Identifiable, Hashable {
+        let id: String
+        let title: String
+    }
+
+    var writableCalendars: [WritableCalendar] {
+        guard canReadMacCalendar else { return [] }
+        return store.calendars(for: .event)
+            .filter(\.allowsContentModifications)
+            .map { WritableCalendar(id: $0.calendarIdentifier, title: $0.title) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    func createMacEvent(calendarID: String, fields: CalendarEventFields) throws {
+        guard canReadMacCalendar,
+              let targetCalendar = store.calendars(for: .event).first(where: {
+                  $0.calendarIdentifier == calendarID && $0.allowsContentModifications
+              }) else { throw CalendarEditError.unavailable }
+        let title = fields.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, fields.start <= fields.end else { throw CalendarEditError.invalidDates }
+        let event = EKEvent(eventStore: store)
+        event.calendar = targetCalendar
+        event.title = title
+        event.isAllDay = fields.allDay
+        event.startDate = fields.start
+        // EventKit expects an inclusive end date for all-day events.
+        event.endDate = fields.end
+        try store.save(event, span: .thisEvent)
+        refresh()
+    }
+
+    func updateMacEvent(_ entry: ScheduleEvent, original: CalendarEventFields,
+                        changes: CalendarEventFields) throws {
+        guard canReadMacCalendar, let identifier = entry.nativeIdentifier,
+              changes.start <= changes.end, !changes.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let day = calendar.dateInterval(of: .day, for: original.start) else { throw CalendarEditError.unavailable }
+        let predicate = store.predicateForEvents(withStart: day.start, end: day.end, calendars: nil)
+        guard let event = store.events(matching: predicate).first(where: { candidate in
+            guard candidate.eventIdentifier == identifier, let start = candidate.startDate else { return false }
+            return (candidate.isAllDay ? calendar.startOfDay(for: start) : start) == original.start
+        }), let latest = nativeEntry(event), latest.nativeIdentifier != nil,
+           let fields = CalendarEventFields(event: latest, calendar: calendar) else { throw CalendarEditError.conflict }
+        if changes.title != original.title {
+            guard fields.title == original.title else { throw CalendarEditError.conflict }
         }
+        let datesChanged = changes.allDay != original.allDay || changes.start != original.start || changes.end != original.end
+        if datesChanged {
+            guard fields.allDay == original.allDay, fields.start == original.start,
+                  fields.end == original.end else { throw CalendarEditError.conflict }
+        }
+        if changes.title != original.title { event.title = changes.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if datesChanged {
+            event.isAllDay = changes.allDay
+            event.startDate = changes.start
+            // EventKit expects an inclusive end date for all-day events.
+            event.endDate = changes.end
+        }
+        try store.save(event, span: .thisEvent)
+        refresh()
+    }
+
+    func deleteMacEvent(_ entry: ScheduleEvent, original: CalendarEventFields) throws {
+        guard canReadMacCalendar, let identifier = entry.nativeIdentifier,
+              let day = calendar.dateInterval(of: .day, for: original.start) else { throw CalendarEditError.unavailable }
+        let predicate = store.predicateForEvents(withStart: day.start, end: day.end, calendars: nil)
+        guard let event = store.events(matching: predicate).first(where: { candidate in
+            guard candidate.eventIdentifier == identifier, let start = candidate.startDate else { return false }
+            return (candidate.isAllDay ? calendar.startOfDay(for: start) : start) == original.start
+        }) else { throw CalendarEditError.conflict }
+        try store.remove(event, span: .thisEvent)
+        refresh()
+    }
+
+    private func nativeEntry(_ event: EKEvent) -> ScheduleEvent? {
+        guard event.status != .canceled, event.attendees?.contains(where: {
+            $0.isCurrentUser && $0.participantStatus == .declined
+        }) != true, let start = event.startDate, let end = event.endDate else { return nil }
+        let first = event.isAllDay ? dayKey(start, in: calendar) : start.ISO8601Format()
+        let last: String
+        if event.isAllDay {
+            let exclusiveEnd = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) ?? end
+            last = dayKey(exclusiveEnd, in: calendar)
+        } else {
+            last = end.ISO8601Format()
+        }
+        let editable = event.calendar.allowsContentModifications && (!event.hasAttendees || event.organizer?.isCurrentUser == true)
+        return ScheduleEvent(id: "\(event.eventIdentifier ?? event.calendarItemIdentifier)|\(first)",
+                             title: event.title ?? "Untitled event", calendar: event.calendar.title,
+                             provider: "mac", start: first, end: last, allDay: event.isAllDay, url: nil,
+                             location: event.location, nativeIdentifier: editable ? event.eventIdentifier : nil)
     }
 
     private func eventKey(_ event: ScheduleEvent) -> String {

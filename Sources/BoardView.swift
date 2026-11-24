@@ -180,6 +180,7 @@ struct AgendaWidget: View {
     let pomodoro: PomodoroTimer
     let openPomodoro: () -> Void
     let openSettings: () -> Void
+    let editEvent: (ScheduleEvent, Date) -> Void
     private var tone: WallpaperText { WallpaperText(light: schedule.lightText) }
 
     private var tasks: [NotionTask] {
@@ -291,7 +292,7 @@ struct AgendaWidget: View {
 
     private func eventRow(_ event: ScheduleEvent) -> some View {
         Button {
-            event.open(on: model.selected)
+            editEvent(event, model.selected)
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(event.allDay ? "all day" : event.startTime.map { clock($0) } ?? "")
@@ -486,7 +487,7 @@ struct AgendaWidget: View {
                 } else {
                     Button("Enable live sync", action: openSettings).buttonStyle(.plain)
                 }
-                if let url = model.notionConfiguration?.tasksURL {
+                if let url = URL(string: "https://app.notion.com/p/Authentic-Page-for-enthusiast-2273acdaf75481d9a641d34e0a9cbd2f?source=copy_link") {
                     Link(destination: url) { Label("Notion", systemImage: "arrow.up.right") }
                         .buttonStyle(.plain)
                 }
