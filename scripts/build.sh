@@ -3,8 +3,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 output="${1:-$root/dist}"
-version="${DAYBOARD_VERSION:-1.9.0}"
-build_number="${DAYBOARD_BUILD_NUMBER:-21}"
+version="${DAYBOARD_VERSION:-1.9.1}"
+build_number="${DAYBOARD_BUILD_NUMBER:-22}"
 architecture="${DAYBOARD_ARCH:-$(uname -m)}"
 case "$architecture" in
     arm64|x86_64) ;;

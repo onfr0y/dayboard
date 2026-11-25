@@ -13,7 +13,7 @@ struct BoardSettings: View {
         Form {
             Section("Calendar") {
                 if schedule.nativeCalendarNames.isEmpty {
-                    Button("Connect Mac Calendar") { Task { await schedule.connect() } }
+                    Button(schedule.calendarConnectionTitle) { Task { await schedule.connect() } }
                     Text("Add the same Google or iCloud accounts in macOS Internet Accounts and turn on Calendars to sync those events.")
                         .foregroundStyle(.secondary)
                 } else {

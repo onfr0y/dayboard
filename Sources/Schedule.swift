@@ -113,6 +113,14 @@ final class ScheduleModel: ObservableObject {
 
     var canReadMacCalendar: Bool { access == .fullAccess }
 
+    var calendarConnectionTitle: String {
+        switch access {
+        case .denied, .restricted: "Open Calendar Privacy"
+        case .fullAccess: "Add Calendar Account"
+        default: "Allow Calendar Access"
+        }
+    }
+
     func observeNotionTasks(_ board: BoardModel) {
         notionObservation = board.$snapshot.sink { [weak self] snapshot in
             guard let self else { return }
@@ -192,22 +200,16 @@ final class ScheduleModel: ObservableObject {
             }
             return
         }
-        if canReadMacCalendar {
-            refresh()
-            if (addAccount || nativeCalendarNames.isEmpty),
-               let accounts = URL(string: "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension") {
-                NSWorkspace.shared.open(accounts)
+        if !canReadMacCalendar {
+            do {
+                _ = try await store.requestFullAccessToEvents()
+                error = nil
+            } catch {
+                self.error = "Calendar access could not be requested. \(error.localizedDescription)"
             }
-            return
-        }
-        do {
-            _ = try await store.requestFullAccessToEvents()
-            error = nil
-        } catch {
-            self.error = "Calendar access could not be requested. \(error.localizedDescription)"
         }
         refresh()
-        if addAccount && canReadMacCalendar,
+        if canReadMacCalendar && (addAccount || nativeCalendarNames.isEmpty),
            let accounts = URL(string: "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension") {
             NSWorkspace.shared.open(accounts)
         }

@@ -70,15 +70,18 @@ struct CalendarWidget: View {
                 Rectangle().fill(tone.rule).frame(height: 1)
                 Button(action: showTimeline) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(model.calendar.component(.day, from: model.selected))")
-                            .font(.system(size: heroSize, weight: .light, design: .default))
-                            .monospacedDigit()
-                            .tracking(-0.085 * heroSize)
-                            .lineLimit(1)
-                            .padding(.leading, -6)
-                            .padding(.top, -10)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .accessibilityHidden(true)
+                        HStack(spacing: -0.055 * heroSize) {
+                            let day = String(model.calendar.component(.day, from: model.selected))
+                            ForEach(Array(day.enumerated()), id: \.offset) { _, digit in
+                                Text(String(digit))
+                                    .monospacedDigit()
+                                    .fixedSize()
+                            }
+                        }
+                        .font(.system(size: heroSize, weight: .light))
+                        .padding(.leading, -6)
+                        .padding(.top, -10)
+                        .accessibilityHidden(true)
                         Text(model.selected.formatted(.dateTime.month(.wide).locale(british)))
                             .font(.system(size: compact ? 28 : 42, weight: .light))
                             .tracking(-1.45)
@@ -243,7 +246,7 @@ struct AgendaWidget: View {
             }
             if !model.scheduleCollapsed {
                 if schedule.nativeCalendarNames.isEmpty {
-                    Button("Connect Calendar") { Task { await schedule.connect() } }
+                    Button(schedule.calendarConnectionTitle) { Task { await schedule.connect() } }
                         .buttonStyle(.plain)
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(tone.muted)
@@ -300,17 +303,20 @@ struct AgendaWidget: View {
                 Text(event.allDay ? "all day" : event.startTime.map { clock($0) } ?? "")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(tone.muted)
-                    .frame(width: 42, alignment: .leading)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(width: 48, alignment: .leading)
                 Text(event.title)
                     .font(.system(size: 14, weight: .medium))
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical, 3)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(event.calendar)
+        .help(event.calendar.isEmpty ? event.title : "\(event.title) · \(event.calendar)")
     }
 
     private var habitsView: some View {
@@ -412,16 +418,22 @@ struct AgendaWidget: View {
                 Text(subtitle)
                     .font(.system(size: 32, weight: .light))
                     .tracking(-1)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
     private func fittingList<Rows: View>(@ViewBuilder rows: () -> Rows) -> some View {
         let list = VStack(alignment: .leading, spacing: 2, content: rows)
+            .frame(maxWidth: .infinity, alignment: .leading)
         return ViewThatFits(in: .vertical) {
             list.fixedSize(horizontal: false, vertical: true)
-            ScrollView { list }.scrollIndicators(.visible)
+            ScrollView(.vertical) { list }
+                .scrollIndicators(.visible)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func emptyMessage(_ message: String) -> some View {
