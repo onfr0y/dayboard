@@ -8,7 +8,7 @@ Open **Pomodoro** from the desktop or the Dayboard menu bar icon. Focus and brea
 
 Open **Meditation** from the leaf icon on the desktop or the Dayboard menu bar icon. Set a duration from 1 to 180 minutes (10 minutes by default), then start, pause, resume or reset the session. The timer runs independently from Pomodoro and keeps going when you close its panel. The circular dial shows elapsed progress, and a chime plays when the session finishes. Drag the dial or header to move the Meditation panel.
 
-Both timers use an animated circular dial and native Liquid Glass on macOS 26 and later. Pomodoro uses blue for Focus and green for Break. Drag either panel by its title or dial to reposition it. Dayboard remembers where you leave each one. Press and hold the dial or Force Click it to start, pause or resume the timer. A compatible trackpad gives a haptic tick.
+Both timers use an animated circular dial and native Liquid Glass on macOS 26 and later. Pomodoro uses blue for Focus and green for Break. Drag either panel by its title or dial to reposition it. Dayboard remembers where you leave each one. Press and hold the dial to start, pause or resume the timer. With the dial focused, press Space to do the same. A compatible trackpad gives a haptic tick.
 
 ## Install
 

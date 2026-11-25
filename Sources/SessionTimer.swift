@@ -196,7 +196,7 @@ struct SessionTimerPanel: View {
 
             SessionDial(timer: timer)
                 .frame(maxWidth: .infinity)
-            controls
+            reset
                 .frame(maxWidth: .infinity)
             Divider()
             if timer.isMeditation {
@@ -218,37 +218,12 @@ struct SessionTimerPanel: View {
         .environment(\.colorScheme, .dark)
     }
 
-    @ViewBuilder private var controls: some View {
-        if #available(macOS 26, *) {
-            GlassEffectContainer(spacing: 8) {
-                transportButtons
-            }
-        } else {
-            transportButtons
-        }
-    }
-
-    private var transportButtons: some View {
-        HStack(spacing: 10) {
-            transport.modifier(SessionTimerGlassChrome(tint: (timer.isMeditation ? Color.green : .blue).opacity(0.40), height: 34))
-            reset.modifier(SessionTimerGlassChrome(height: 34))
-        }
-    }
-
-    private var transport: some View {
-        Button(action: timer.toggleRunning) {
-            Label(timer.running ? "Pause" : timer.started ? "Resume" : "Start",
-                  systemImage: timer.running ? "pause.fill" : "play.fill")
-                .frame(minWidth: 92)
-                .foregroundStyle(.white)
-        }
-    }
-
     private var reset: some View {
         Button { timer.reset() } label: {
             Label("Reset", systemImage: "arrow.counterclockwise")
                 .foregroundStyle(.white)
         }
+        .modifier(SessionTimerGlassChrome(height: 34))
         .help("Reset to the chosen duration")
     }
 
@@ -345,7 +320,11 @@ private struct SessionDial: View {
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: true))
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: remaining)
-                Text(timer.completedPhase.map { $0 == .meditation ? "Complete" : $0.completionLabel } ?? holdHint)
+                if let phase = timer.completedPhase {
+                    Text(phase == .meditation ? "Complete" : phase.completionLabel)
+                        .font(.system(size: 10))
+                }
+                Text(holdHint)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -360,10 +339,17 @@ private struct SessionDial: View {
         .allowsHitTesting(false)
         .overlay {
             PanelDragRegion(onPress: pressDial)
-                .help("Press and hold or Force Click to control the timer. Drag to move the panel.")
+                .help("Press and hold to control the timer. Drag to move the panel.")
                 .accessibilityHidden(true)
         }
+        .focusable()
+        .onKeyPress(.space) {
+            pressDial()
+            return .handled
+        }
         .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { pressDial() }
         .accessibilityLabel(timer.completedPhase?.completionLabel ?? "\(displayedPhase.rawValue) timer")
         .accessibilityValue("\(remaining / 60) minutes, \(remaining % 60) seconds remaining")
     }
@@ -402,7 +388,6 @@ struct PanelDragRegion: NSViewRepresentable {
 
     func updateNSView(_ view: DragView, context: Context) {
         view.onPress = onPress
-        view.pressureConfiguration = onPress == nil ? nil : NSPressureConfiguration(pressureBehavior: .primaryGeneric)
     }
 
     final class DragView: NSView {
@@ -455,10 +440,6 @@ struct PanelDragRegion: NSViewRepresentable {
             pointerStart = nil
         }
 
-        override func pressureChange(with event: NSEvent) {
-            if event.stage >= 2 { activatePress() }
-        }
-
         private func activatePress() {
             guard window != nil, pointerStart != nil, !dragging, !pressed,
                   NSEvent.pressedMouseButtons & 1 != 0 else { return }
@@ -470,7 +451,6 @@ struct PanelDragRegion: NSViewRepresentable {
 }
 
 private struct SessionTimerGlassChrome: ViewModifier {
-    var tint: Color? = nil
     var height: CGFloat
 
     func body(content: Content) -> some View {
@@ -478,7 +458,7 @@ private struct SessionTimerGlassChrome: ViewModifier {
         let control = content
             .controlSize(height > 25 ? .large : .small)
             .frame(minHeight: height)
-            .background(tint ?? .white.opacity(0.10), in: capsule)
+            .background(.white.opacity(0.10), in: capsule)
             .overlay {
                 capsule.strokeBorder(.white.opacity(0.24), lineWidth: 1)
                     .allowsHitTesting(false)
