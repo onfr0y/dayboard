@@ -6,6 +6,8 @@ import ServiceManagement
 struct BoardSettings: View {
     @ObservedObject var model: BoardModel
     @ObservedObject var schedule: ScheduleModel
+    @ObservedObject var displayCorners: DisplayCorners
+    let setRoundedDisplayCorners: (Bool) -> Void
 
     var body: some View {
         Form {
@@ -82,6 +84,21 @@ struct BoardSettings: View {
                 if let checkInProblem = model.checkInProblem { Text(checkInProblem).foregroundStyle(.red) }
             }
             Section("Desktop") {
+                Toggle(DisplayCorners.menuTitle, isOn: Binding(
+                    get: { displayCorners.enabled },
+                    set: setRoundedDisplayCorners
+                ))
+                if displayCorners.enabled {
+                    Slider(value: Binding(get: { displayCorners.radius }, set: displayCorners.setRadius),
+                           in: DisplayCorners.radiusRange, step: 1) {
+                        Text("Corner radius")
+                    } minimumValueLabel: {
+                        Text("8")
+                    } maximumValueLabel: {
+                        Text("40 pt")
+                    }
+                    .accessibilityValue("\(Int(displayCorners.radius)) points")
+                }
                 Toggle("Light text on wallpaper", isOn: $schedule.lightText)
                 Toggle("Launch at login", isOn: Binding(
                     get: { model.loginStatus == .enabled || model.loginStatus == .requiresApproval },

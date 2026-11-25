@@ -16,10 +16,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let meditation = SessionTimer(phase: .meditation) { [chime = NSSound(named: "Glass")] in
         if chime?.play() != true { NSSound.beep() }
     }
+    private let displayCorners = DisplayCorners()
     private var settings: NSWindow?
     private var eventEditorWindow: NSWindow?
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
+    private var displayCornersItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let args = ProcessInfo.processInfo.arguments
@@ -64,11 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Refresh Dayboard", action: #selector(refresh), keyEquivalent: "r")
         menu.addItem(withTitle: "Connect Mac Calendar…", action: #selector(connectCalendar), keyEquivalent: "")
         menu.addItem(withTitle: "Switch Text Colour", action: #selector(switchTextColour), keyEquivalent: "")
+        displayCornersItem = menu.addItem(withTitle: DisplayCorners.menuTitle,
+                                          action: #selector(toggleDisplayCorners), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         menu.addItem(withTitle: "Quit Dayboard", action: #selector(quit), keyEquivalent: "q")
         for item in menu.items { item.target = self }
         statusItem.menu = menu
+        updateDisplayCornersMenu()
+        displayCorners.refresh()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil
@@ -82,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidChangeScreenParameters(_ notification: Notification) {
+        displayCorners.refresh()
         positionPanel()
         if let timelinePanel, timelinePanel.isVisible {
             timelinePanel.stopReveal()
@@ -385,7 +392,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func showSettings() {
         if settings == nil {
-            let controller = NSHostingController(rootView: BoardSettings(model: model, schedule: schedule))
+            let controller = NSHostingController(rootView: BoardSettings(
+                model: model, schedule: schedule, displayCorners: displayCorners,
+                setRoundedDisplayCorners: { [weak self] in self?.setRoundedDisplayCorners($0) }
+            ))
             let window = NSWindow(contentViewController: controller)
             window.title = "Dayboard Settings"
             window.styleMask = [.titled, .closable]
@@ -396,6 +406,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.loginStatus = ServiceManagement.SMAppService.mainApp.status
         NSApp.activate()
         settings?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func toggleDisplayCorners() {
+        setRoundedDisplayCorners(!displayCorners.enabled)
+    }
+
+    private func setRoundedDisplayCorners(_ enabled: Bool) {
+        displayCorners.setEnabled(enabled)
+        updateDisplayCornersMenu()
+    }
+
+    private func updateDisplayCornersMenu() {
+        displayCornersItem.state = displayCorners.enabled ? .on : .off
     }
 
     @objc private func connectCalendar() { Task { await schedule.connect() } }

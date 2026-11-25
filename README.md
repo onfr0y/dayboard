@@ -10,6 +10,8 @@ Open **Meditation** from the leaf icon on the desktop or the Dayboard menu bar i
 
 Both timers use an animated circular dial and native Liquid Glass on macOS 26 and later. Pomodoro uses blue for Focus and green for Break. Drag either panel by its title or dial to reposition it. Dayboard remembers where you leave each one. Press and hold the dial to start, pause or resume the timer. With the dial focused, press Space to do the same. A compatible trackpad gives a haptic tick.
 
+Choose **Rounded Display Corners** in the Dayboard menu to add a black curve to each corner on connected displays. Change the radius under **Settings → Desktop**. The corners let clicks pass through and remain visible when you hide the desktop board.
+
 ## Install
 
 Download the macOS ZIP for your processor from the repository's Releases page. Extract it, move Dayboard.app to Applications and open it. The app requires macOS 14 or later. Release builds are ad-hoc signed and are intended for local installation. The menu bar calendar icon opens Settings, changes the text colour and hides or shows the board.
