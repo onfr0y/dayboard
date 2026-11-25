@@ -2,23 +2,47 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class PomodoroTimer: ObservableObject {
+final class SessionTimer: ObservableObject {
     enum Phase: String, CaseIterable {
         case focus = "Focus"
         case rest = "Break"
+        case meditation = "Meditation"
 
-        var next: Self { self == .focus ? .rest : .focus }
+        var next: Self {
+            switch self {
+            case .focus: .rest
+            case .rest: .focus
+            case .meditation: .meditation
+            }
+        }
+
+        var durationKey: String {
+            switch self {
+            case .focus: "pomodoroFocusMinutes"
+            case .rest: "pomodoroBreakMinutes"
+            case .meditation: "meditationMinutes"
+            }
+        }
+
+        var defaultMinutes: Int {
+            switch self {
+            case .focus: 25
+            case .rest: 5
+            case .meditation: 10
+            }
+        }
+
+        var completionLabel: String { "\(rawValue) complete" }
     }
 
     static let minuteRange = 1...180
 
-    @Published private(set) var phase: Phase = .focus
+    @Published private(set) var phase: Phase
     @Published private(set) var seconds = 25 * 60
     @Published private(set) var running = false
     @Published private(set) var started = false
     @Published private(set) var completedPhase: Phase?
-    @Published private(set) var focusMinutes = 25
-    @Published private(set) var breakMinutes = 5
+    @Published private var durations: [Phase: Int]
     private(set) var sessionSeconds = 25 * 60
 
     private let preferences: UserDefaults
@@ -27,33 +51,36 @@ final class PomodoroTimer: ObservableObject {
     private var timeLeft: TimeInterval = 25 * 60
     private var ticker: Timer?
 
-    init(preferences: UserDefaults = .standard, completion: @escaping () -> Void = { NSSound.beep() }) {
+    init(phase: Phase = .focus, preferences: UserDefaults = .standard,
+         completion: @escaping () -> Void = { NSSound.beep() }) {
+        self.phase = phase
         self.preferences = preferences
         self.completion = completion
-        focusMinutes = preferences.object(forKey: "pomodoroFocusMinutes") as? Int ?? 25
-        breakMinutes = preferences.object(forKey: "pomodoroBreakMinutes") as? Int ?? 5
-        focusMinutes = clamp(focusMinutes)
-        breakMinutes = clamp(breakMinutes)
+        durations = Dictionary(uniqueKeysWithValues: Phase.allCases.map { phase in
+            let saved = preferences.object(forKey: phase.durationKey) as? Int
+            return (phase, Self.clamp(saved ?? phase.defaultMinutes))
+        })
         reset()
     }
 
+    var isMeditation: Bool { phase == .meditation }
+    var title: String { isMeditation ? "Meditation" : "Pomodoro" }
+    var symbol: String { isMeditation ? "leaf" : "timer" }
     var timeLabel: String { String(format: "%02d:%02d", seconds / 60, seconds % 60) }
 
+    func minutes(for phase: Phase) -> Int {
+        durations[phase] ?? phase.defaultMinutes
+    }
+
     func setMinutes(_ minutes: Int, for phase: Phase) {
-        let clamped = clamp(minutes)
-        switch phase {
-        case .focus:
-            focusMinutes = clamped
-            preferences.set(clamped, forKey: "pomodoroFocusMinutes")
-        case .rest:
-            breakMinutes = clamped
-            preferences.set(clamped, forKey: "pomodoroBreakMinutes")
-        }
+        let clamped = Self.clamp(minutes)
+        durations[phase] = clamped
+        preferences.set(clamped, forKey: phase.durationKey)
         if !started && phase == self.phase { reset() }
     }
 
     func select(_ phase: Phase) {
-        guard !started, phase != self.phase else { return }
+        guard !started, !isMeditation, phase != .meditation, phase != self.phase else { return }
         self.phase = phase
         reset()
     }
@@ -87,7 +114,7 @@ final class PomodoroTimer: ObservableObject {
         stop()
         started = false
         completedPhase = nil
-        sessionSeconds = (phase == .focus ? focusMinutes : breakMinutes) * 60
+        sessionSeconds = minutes(for: phase) * 60
         seconds = sessionSeconds
         timeLeft = TimeInterval(seconds)
     }
@@ -113,13 +140,13 @@ final class PomodoroTimer: ObservableObject {
         running = false
     }
 
-    private func clamp(_ minutes: Int) -> Int {
+    private static func clamp(_ minutes: Int) -> Int {
         min(Self.minuteRange.upperBound, max(Self.minuteRange.lowerBound, minutes))
     }
 }
 
-struct PomodoroPanel: View {
-    @ObservedObject var timer: PomodoroTimer
+struct SessionTimerPanel: View {
+    @ObservedObject var timer: SessionTimer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let dismiss: () -> Void
 
@@ -135,12 +162,12 @@ struct PomodoroPanel: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack {
-                Text("Pomodoro")
+                Text(timer.title)
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
                     .frame(maxWidth: .infinity, minHeight: 25, alignment: .leading)
                     .overlay {
-                        PomodoroDragRegion()
+                        PanelDragRegion()
                             .accessibilityHidden(true)
                     }
                 Button(action: dismiss) {
@@ -148,18 +175,20 @@ struct PomodoroPanel: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white)
                 }
-                .modifier(PomodoroGlassChrome(height: 25))
+                .modifier(SessionTimerGlassChrome(height: 25))
                 .keyboardShortcut(.cancelAction)
-                .accessibilityLabel("Close Pomodoro")
+                .accessibilityLabel("Close \(timer.title)")
             }
-            Picker("Session type", selection: Binding(get: { timer.phase }, set: { timer.select($0) })) {
-                ForEach(PomodoroTimer.Phase.allCases, id: \.self) { phase in
-                    Text(phase.rawValue).tag(phase)
+            if !timer.isMeditation {
+                Picker("Session type", selection: Binding(get: { timer.phase }, set: { timer.select($0) })) {
+                    ForEach([SessionTimer.Phase.focus, .rest], id: \.self) { phase in
+                        Text(phase.rawValue).tag(phase)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .disabled(timer.started)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .disabled(timer.started)
 
             VStack(spacing: 4) {
                 Text(timer.timeLabel)
@@ -171,7 +200,7 @@ struct PomodoroPanel: View {
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: timer.seconds)
                     .accessibilityLabel("\(timer.seconds / 60) minutes, \(timer.seconds % 60) seconds")
                 if let phase = timer.completedPhase {
-                    Text(phase == .focus ? "Focus complete" : "Break complete")
+                    Text(phase.completionLabel)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -183,9 +212,14 @@ struct PomodoroPanel: View {
             controls
                 .frame(maxWidth: .infinity)
             Divider()
-            duration("Focus minutes", phase: .focus)
-            duration("Break minutes", phase: .rest)
-            if timer.started {
+            if timer.isMeditation {
+                duration("Duration in minutes", phase: .meditation)
+                    .disabled(timer.started)
+            } else {
+                duration("Focus minutes", phase: .focus)
+                duration("Break minutes", phase: .rest)
+            }
+            if timer.started && !timer.isMeditation {
                 Text("New lengths apply on reset or next session.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -209,8 +243,8 @@ struct PomodoroPanel: View {
 
     private var transportButtons: some View {
         HStack(spacing: 10) {
-            transport.modifier(PomodoroGlassChrome(tint: .blue.opacity(0.40), height: 34))
-            reset.modifier(PomodoroGlassChrome(height: 34))
+            transport.modifier(SessionTimerGlassChrome(tint: (timer.isMeditation ? Color.green : .blue).opacity(0.40), height: 34))
+            reset.modifier(SessionTimerGlassChrome(height: 34))
         }
     }
 
@@ -233,8 +267,8 @@ struct PomodoroPanel: View {
         .help("Reset to the chosen duration")
     }
 
-    private func duration(_ label: String, phase: PomodoroTimer.Phase) -> some View {
-        let value = Binding(get: { phase == .focus ? timer.focusMinutes : timer.breakMinutes },
+    private func duration(_ label: String, phase: SessionTimer.Phase) -> some View {
+        let value = Binding(get: { timer.minutes(for: phase) },
                             set: { timer.setMinutes($0, for: phase) })
         return HStack {
             Text(label).font(.system(size: 12))
@@ -244,29 +278,33 @@ struct PomodoroPanel: View {
                 .multilineTextAlignment(.trailing)
                 .font(.system(size: 12, design: .monospaced))
                 .frame(width: 45)
-            Stepper(label, value: value, in: PomodoroTimer.minuteRange)
+            Stepper(label, value: value, in: SessionTimer.minuteRange)
                 .labelsHidden()
         }
     }
 }
 
-struct PomodoroButton: View {
-    @ObservedObject var timer: PomodoroTimer
+struct SessionTimerButton: View {
+    @ObservedObject var timer: SessionTimer
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label(timer.started ? timer.timeLabel : "Pomodoro", systemImage: "timer")
-                .monospacedDigit()
+            if timer.isMeditation && !timer.started {
+                Image(systemName: timer.symbol)
+            } else {
+                Label(timer.started ? timer.timeLabel : timer.title, systemImage: timer.symbol)
+                    .monospacedDigit()
+            }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open Pomodoro timer")
+        .accessibilityLabel("Open \(timer.title) timer")
         .accessibilityValue(timer.started ? timer.timeLabel : "")
-        .help(timer.started ? "\(timer.phase.rawValue) · \(timer.timeLabel)" : "Open Pomodoro timer")
+        .help(timer.started ? "\(timer.phase.rawValue) · \(timer.timeLabel)" : "Open \(timer.title) timer")
     }
 }
 
-struct PomodoroDragRegion: NSViewRepresentable {
+struct PanelDragRegion: NSViewRepresentable {
     func makeNSView(context: Context) -> DragView { DragView() }
     func updateNSView(_ view: DragView, context: Context) {}
 
@@ -284,7 +322,7 @@ struct PomodoroDragRegion: NSViewRepresentable {
     }
 }
 
-private struct PomodoroGlassChrome: ViewModifier {
+private struct SessionTimerGlassChrome: ViewModifier {
     var tint: Color? = nil
     var height: CGFloat
 

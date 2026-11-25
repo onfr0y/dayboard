@@ -11,7 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var timelinePanel: DesktopPanel?
     private let timelineDrag = TimelineDragState()
     private var pomodoroPanel: DesktopPanel?
-    private let pomodoro = PomodoroTimer()
+    private let pomodoro = SessionTimer()
+    private var meditationPanel: DesktopPanel?
+    private let meditation = SessionTimer(phase: .meditation) { [chime = NSSound(named: "Glass")] in
+        if chime?.play() != true { NSSound.beep() }
+    }
     private var settings: NSWindow?
     private var eventEditorWindow: NSWindow?
     private var statusItem: NSStatusItem!
@@ -40,7 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         })
         agendaPanel = desktopPanel(title: "Dayboard Agenda", level: widgetLevel,
                                    content: AgendaWidget(model: model, schedule: schedule, pomodoro: pomodoro,
+                                                         meditation: meditation,
                                                          openPomodoro: { [weak self] in self?.showPomodoro() },
+                                                         openMeditation: { [weak self] in self?.showMeditation() },
                                                          openSettings: { [weak self] in self?.showSettings() },
                                                          editEvent: { [weak self] in self?.showEventEditor($0, on: $1) }))
         positionPanel()
@@ -54,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Show Calendar Timeline", action: #selector(showTimeline), keyEquivalent: "")
         menu.addItem(withTitle: "New Calendar Event…", action: #selector(newEvent), keyEquivalent: "n")
         menu.addItem(withTitle: "Show Pomodoro Timer", action: #selector(showPomodoro), keyEquivalent: "")
+        menu.addItem(withTitle: "Show Meditation Timer", action: #selector(showMeditation), keyEquivalent: "")
         menu.addItem(withTitle: "Refresh Dayboard", action: #selector(refresh), keyEquivalent: "r")
         menu.addItem(withTitle: "Connect Mac Calendar…", action: #selector(connectCalendar), keyEquivalent: "")
         menu.addItem(withTitle: "Switch Text Colour", action: #selector(switchTextColour), keyEquivalent: "")
@@ -82,7 +89,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             recoverTimelinePosition(timelinePanel)
         }
         if let pomodoroPanel, pomodoroPanel.isVisible {
-            recoverPomodoroPosition(pomodoroPanel)
+            recoverTimerPosition(pomodoroPanel, for: pomodoro)
+        }
+        if let meditationPanel, meditationPanel.isVisible {
+            recoverTimerPosition(meditationPanel, for: meditation)
         }
     }
 
@@ -123,6 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if calendarPanel.isVisible {
             closeTimeline()
             pomodoroPanel?.orderOut(nil)
+            meditationPanel?.orderOut(nil)
             calendarPanel.orderOut(nil)
             agendaPanel.orderOut(nil)
             visibilityItem.title = "Show Desktop Board"
@@ -280,52 +291,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         presentEditorWindow(title: editable ? "Edit Calendar Event" : "Calendar Event", rootView: view)
     }
 
-    private func pomodoroFrame() -> NSRect? {
+    private func timerFrame(for timer: SessionTimer) -> NSRect? {
         guard let screen = agendaPanel?.screen ?? NSScreen.screens.first else { return nil }
         let usable = screen.visibleFrame
         let width = min(340, usable.width - 48)
-        let height = min(382, usable.height - 48)
-        return NSRect(x: usable.maxX - width - 24, y: usable.minY + 24, width: width, height: height)
+        let height = min(timer.isMeditation ? 306 : 382, usable.height - 48)
+        let right = usable.maxX - width - 24
+        let left = max(usable.minX + 24, right - width - 16)
+        return NSRect(x: timer.isMeditation ? left : right, y: usable.minY + 24, width: width, height: height)
     }
 
     @objc private func showPomodoro() {
-        if pomodoroPanel == nil {
-            guard let frame = pomodoroFrame() else { return }
-            let dismiss: () -> Void = { [weak self] in self?.pomodoroPanel?.orderOut(nil) }
-            let panel = desktopPanel(title: "Dayboard Pomodoro", level: .floating,
-                                     content: PomodoroPanel(timer: pomodoro, dismiss: dismiss))
-            if #available(macOS 26, *), let content = panel.contentView {
-                let glass = NSGlassEffectView(frame: content.frame)
-                glass.cornerRadius = 28
-                glass.style = .regular
-                glass.appearance = NSAppearance(named: .darkAqua)
-                glass.tintColor = NSColor(white: 0.14, alpha: 0.30)
-                content.autoresizingMask = [.width, .height]
-                panel.contentView = glass
-                glass.contentView = content
-            }
-            panel.hasShadow = true
-            panel.collectionBehavior = [.moveToActiveSpace, .ignoresCycle, .fullScreenNone]
-            panel.onCancel = dismiss
-            panel.setFrame(frame, display: true)
-            panel.isMovable = true
-            panel.setFrameAutosaveName("Dayboard Pomodoro")
-            pomodoroPanel = panel
+        if pomodoroPanel == nil { pomodoroPanel = makeTimerPanel(for: pomodoro) }
+        showTimerPanel(pomodoroPanel, for: pomodoro)
+    }
+
+    @objc private func showMeditation() {
+        if meditationPanel == nil { meditationPanel = makeTimerPanel(for: meditation) }
+        showTimerPanel(meditationPanel, for: meditation)
+    }
+
+    private func makeTimerPanel(for timer: SessionTimer) -> DesktopPanel? {
+        guard let frame = timerFrame(for: timer) else { return nil }
+        let title = "Dayboard \(timer.title)"
+        let dismiss: () -> Void = { [weak self] in
+            let panel = timer.isMeditation ? self?.meditationPanel : self?.pomodoroPanel
+            panel?.orderOut(nil)
         }
-        guard let panel = pomodoroPanel else { return }
-        recoverPomodoroPosition(panel)
+        let panel = desktopPanel(title: title, level: .floating,
+                                 content: SessionTimerPanel(timer: timer, dismiss: dismiss))
+        if #available(macOS 26, *), let content = panel.contentView {
+            let glass = NSGlassEffectView(frame: content.frame)
+            glass.cornerRadius = 28
+            glass.style = .regular
+            glass.appearance = NSAppearance(named: .darkAqua)
+            glass.tintColor = NSColor(white: 0.14, alpha: 0.30)
+            content.autoresizingMask = [.width, .height]
+            panel.contentView = glass
+            glass.contentView = content
+        }
+        panel.hasShadow = true
+        panel.collectionBehavior = [.moveToActiveSpace, .ignoresCycle, .fullScreenNone]
+        panel.onCancel = dismiss
+        panel.setFrame(frame, display: true)
+        panel.isMovable = true
+        panel.setFrameAutosaveName(title)
+        return panel
+    }
+
+    private func showTimerPanel(_ panel: DesktopPanel?, for timer: SessionTimer) {
+        guard let panel else { return }
+        recoverTimerPosition(panel, for: timer)
         panel.orderFrontRegardless()
         panel.makeKey()
     }
 
-    private func recoverPomodoroPosition(_ panel: DesktopPanel) {
+    private func recoverTimerPosition(_ panel: DesktopPanel, for timer: SessionTimer) {
         let dragArea = NSRect(x: panel.frame.minX + 22, y: panel.frame.maxY - 47,
                               width: panel.frame.width - 80, height: 25)
         let titleVisible = NSScreen.screens.contains { screen in
             let visible = dragArea.intersection(screen.visibleFrame)
             return visible.width >= 44 && visible.height >= 12
         }
-        if !titleVisible, let fallback = pomodoroFrame() {
+        if !titleVisible, let fallback = timerFrame(for: timer) {
             panel.setFrame(fallback, display: true)
         }
     }
@@ -341,6 +369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func woke() {
         pomodoro.update()
+        meditation.update()
         model.rollDate()
         schedule.refresh()
         Task { await model.refresh() }

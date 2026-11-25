@@ -6,7 +6,9 @@ Choose **Show less** to collapse Schedule and Tasks together, or collapse Tasks 
 
 Open **Pomodoro** from the desktop or the Dayboard menu bar icon. Focus and break lengths default to 25 and 5 minutes and can each be set from 1 to 180 minutes. The timer keeps going while its panel is closed. Dayboard plays a sound at the end of a session and readies the next one for you to start.
 
-The Pomodoro panel uses native Liquid Glass on macOS 26 and later. Drag its title area to reposition the panel. Dayboard remembers where you leave it.
+Open **Meditation** from the leaf icon on the desktop or the Dayboard menu bar icon. Set a duration from 1 to 180 minutes (10 minutes by default), then start, pause, resume or reset the session. The timer runs independently from Pomodoro and keeps going when you close its panel. A chime plays when the session finishes.
+
+Both timer panels use native Liquid Glass on macOS 26 and later. Drag either panel by its title to reposition it. Dayboard remembers where you leave each one.
 
 ## Install
 

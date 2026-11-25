@@ -193,7 +193,7 @@ struct CalendarTimeline: View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
                 ZStack(alignment: .leading) {
-                    PomodoroDragRegion()
+                    PanelDragRegion()
                         .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
                     Label("Schedule", systemImage: "calendar")
                         .font(.system(size: 12, weight: .semibold))
