@@ -295,7 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let screen = agendaPanel?.screen ?? NSScreen.screens.first else { return nil }
         let usable = screen.visibleFrame
         let width = min(340, usable.width - 48)
-        let height = min(timer.isMeditation ? 306 : 382, usable.height - 48)
+        let height = min(timer.isMeditation ? 370 : 382, usable.height - 48)
         let right = usable.maxX - width - 24
         let left = max(usable.minX + 24, right - width - 16)
         return NSRect(x: timer.isMeditation ? left : right, y: usable.minY + 24, width: width, height: height)
@@ -336,6 +336,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.setFrame(frame, display: true)
         panel.isMovable = true
         panel.setFrameAutosaveName(title)
+        if timer.isMeditation, panel.setFrameUsingName(title) {
+            panel.setFrame(NSRect(origin: panel.frame.origin, size: frame.size), display: true)
+        }
         return panel
     }
 

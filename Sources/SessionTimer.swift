@@ -162,14 +162,15 @@ struct SessionTimerPanel: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack {
-                Text(timer.title)
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                    .frame(maxWidth: .infinity, minHeight: 25, alignment: .leading)
-                    .overlay {
-                        PanelDragRegion()
-                            .accessibilityHidden(true)
-                    }
+                ZStack(alignment: .leading) {
+                    PanelDragRegion()
+                        .frame(maxWidth: .infinity, minHeight: 25, maxHeight: 25)
+                        .accessibilityHidden(true)
+                    Text(timer.title)
+                        .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
+                        .allowsHitTesting(false)
+                }
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .semibold))
@@ -190,25 +191,30 @@ struct SessionTimerPanel: View {
                 .disabled(timer.started)
             }
 
-            VStack(spacing: 4) {
-                Text(timer.timeLabel)
-                    .font(.system(size: 64, weight: .light, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                    .contentTransition(.numericText(countsDown: true))
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: timer.seconds)
-                    .accessibilityLabel("\(timer.seconds / 60) minutes, \(timer.seconds % 60) seconds")
-                if let phase = timer.completedPhase {
-                    Text(phase.completionLabel)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+            if timer.isMeditation {
+                MeditationDial(timer: timer)
+                    .frame(maxWidth: .infinity)
+            } else {
+                VStack(spacing: 4) {
+                    Text(timer.timeLabel)
+                        .font(.system(size: 64, weight: .light, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                        .contentTransition(.numericText(countsDown: true))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: timer.seconds)
+                        .accessibilityLabel("\(timer.seconds / 60) minutes, \(timer.seconds % 60) seconds")
+                    if let phase = timer.completedPhase {
+                        Text(phase.completionLabel)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressView(value: Double(timer.seconds), total: Double(timer.sessionSeconds))
+                        .labelsHidden()
+                        .accessibilityHidden(true)
                 }
-                ProgressView(value: Double(timer.seconds), total: Double(timer.sessionSeconds))
-                    .labelsHidden()
-                    .accessibilityHidden(true)
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
             controls
                 .frame(maxWidth: .infinity)
             Divider()
@@ -281,6 +287,80 @@ struct SessionTimerPanel: View {
             Stepper(label, value: value, in: SessionTimer.minuteRange)
                 .labelsHidden()
         }
+    }
+}
+
+private struct MeditationDial: View {
+    @ObservedObject var timer: SessionTimer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let diameter: CGFloat = 176
+    private let accent = Color(red: 0.68, green: 0.85, blue: 0.73)
+
+    private var finished: Bool { timer.completedPhase == .meditation }
+    private var remaining: Int { finished ? 0 : timer.seconds }
+    private var progress: Double { 1 - Double(remaining) / Double(timer.sessionSeconds) }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(.black.opacity(0.22))
+            Circle()
+                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+
+            ForEach(0..<60) { position in
+                let major = position.isMultiple(of: 5)
+                Capsule()
+                    .fill(.white.opacity(major ? 0.44 : 0.19))
+                    .frame(width: major ? 2 : 1, height: major ? 7 : 4)
+                    .offset(y: -(diameter / 2 - 10))
+                    .rotationEffect(.degrees(Double(position) * 6))
+            }
+
+            Circle()
+                .strokeBorder(.white.opacity(0.10), lineWidth: 3)
+                .padding(21)
+            ZStack {
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Circle()
+                    .fill(accent)
+                    .frame(width: 7, height: 7)
+                    .offset(y: -(diameter / 2 - 22.5))
+                    .rotationEffect(.degrees(progress * 360))
+            }
+            .padding(22.5)
+            .animation(reduceMotion || !timer.running || progress == 0 ? nil : .linear(duration: 0.9),
+                       value: progress)
+
+            Circle()
+                .fill(.white.opacity(0.055))
+                .overlay { Circle().strokeBorder(.white.opacity(0.12)) }
+                .padding(31)
+            VStack(spacing: 4) {
+                Image(systemName: finished ? "checkmark" : "leaf")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(accent)
+                Text(finished ? "00:00" : timer.timeLabel)
+                    .font(.system(size: 32, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(countsDown: true))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: remaining)
+                if finished {
+                    Text("Complete")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .allowsHitTesting(false)
+        .overlay { PanelDragRegion().accessibilityHidden(true) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(finished ? "Meditation complete" : "Meditation timer")
+        .accessibilityValue("\(remaining / 60) minutes, \(remaining % 60) seconds remaining")
     }
 }
 
