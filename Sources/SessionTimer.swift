@@ -85,6 +85,10 @@ final class SessionTimer: ObservableObject {
         reset()
     }
 
+    func toggleRunning() {
+        if running { pause() } else { start() }
+    }
+
     func start(now: Date = .now) {
         guard !running else { return }
         deadline = now.addingTimeInterval(timeLeft)
@@ -147,7 +151,6 @@ final class SessionTimer: ObservableObject {
 
 struct SessionTimerPanel: View {
     @ObservedObject var timer: SessionTimer
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let dismiss: () -> Void
 
     var body: some View {
@@ -191,30 +194,8 @@ struct SessionTimerPanel: View {
                 .disabled(timer.started)
             }
 
-            if timer.isMeditation {
-                MeditationDial(timer: timer)
-                    .frame(maxWidth: .infinity)
-            } else {
-                VStack(spacing: 4) {
-                    Text(timer.timeLabel)
-                        .font(.system(size: 64, weight: .light, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                        .contentTransition(.numericText(countsDown: true))
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: timer.seconds)
-                        .accessibilityLabel("\(timer.seconds / 60) minutes, \(timer.seconds % 60) seconds")
-                    if let phase = timer.completedPhase {
-                        Text(phase.completionLabel)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                    ProgressView(value: Double(timer.seconds), total: Double(timer.sessionSeconds))
-                        .labelsHidden()
-                        .accessibilityHidden(true)
-                }
+            SessionDial(timer: timer)
                 .frame(maxWidth: .infinity)
-            }
             controls
                 .frame(maxWidth: .infinity)
             Divider()
@@ -255,9 +236,7 @@ struct SessionTimerPanel: View {
     }
 
     private var transport: some View {
-        Button {
-            if timer.running { timer.pause() } else { timer.start() }
-        } label: {
+        Button(action: timer.toggleRunning) {
             Label(timer.running ? "Pause" : timer.started ? "Resume" : "Start",
                   systemImage: timer.running ? "pause.fill" : "play.fill")
                 .frame(minWidth: 92)
@@ -290,14 +269,32 @@ struct SessionTimerPanel: View {
     }
 }
 
-private struct MeditationDial: View {
+private struct SessionDial: View {
     @ObservedObject var timer: SessionTimer
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var feedbackCount = SwiftUI.State<Int>(wrappedValue: 0)
 
     private let diameter: CGFloat = 176
-    private let accent = Color(red: 0.68, green: 0.85, blue: 0.73)
+    private var displayedPhase: SessionTimer.Phase { timer.completedPhase ?? timer.phase }
+    private var accent: Color {
+        displayedPhase == .focus
+            ? Color(red: 0.62, green: 0.77, blue: 0.97)
+            : Color(red: 0.68, green: 0.85, blue: 0.73)
+    }
+    private var symbol: String {
+        if finished { return "checkmark" }
+        switch displayedPhase {
+        case .focus: return "timer"
+        case .rest: return "cup.and.saucer"
+        case .meditation: return "leaf"
+        }
+    }
+    private var holdHint: String {
+        if timer.running { return "Hold to pause" }
+        return timer.started ? "Hold to resume" : "Hold to start"
+    }
 
-    private var finished: Bool { timer.completedPhase == .meditation }
+    private var finished: Bool { timer.completedPhase != nil }
     private var remaining: Int { finished ? 0 : timer.seconds }
     private var progress: Double { 1 - Double(remaining) / Double(timer.sessionSeconds) }
 
@@ -340,7 +337,7 @@ private struct MeditationDial: View {
                 .overlay { Circle().strokeBorder(.white.opacity(0.12)) }
                 .padding(31)
             VStack(spacing: 4) {
-                Image(systemName: finished ? "checkmark" : "leaf")
+                Image(systemName: symbol)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(accent)
                 Text(finished ? "00:00" : timer.timeLabel)
@@ -348,19 +345,33 @@ private struct MeditationDial: View {
                     .monospacedDigit()
                     .contentTransition(.numericText(countsDown: true))
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: remaining)
-                if finished {
-                    Text("Complete")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
+                Text(timer.completedPhase.map { $0 == .meditation ? "Complete" : $0.completionLabel } ?? holdHint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(width: diameter, height: diameter)
+        .keyframeAnimator(initialValue: 1.0, trigger: feedbackCount.wrappedValue) { content, scale in
+            content.scaleEffect(scale)
+        } keyframes: { _ in
+            CubicKeyframe(0.96, duration: 0.08)
+            CubicKeyframe(1.0, duration: 0.18)
+        }
         .allowsHitTesting(false)
-        .overlay { PanelDragRegion().accessibilityHidden(true) }
+        .overlay {
+            PanelDragRegion(onPress: pressDial)
+                .help("Press and hold or Force Click to control the timer. Drag to move the panel.")
+                .accessibilityHidden(true)
+        }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(finished ? "Meditation complete" : "Meditation timer")
+        .accessibilityLabel(timer.completedPhase?.completionLabel ?? "\(displayedPhase.rawValue) timer")
         .accessibilityValue("\(remaining / 60) minutes, \(remaining % 60) seconds remaining")
+    }
+
+    private func pressDial() {
+        timer.toggleRunning()
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        if !reduceMotion { feedbackCount.wrappedValue += 1 }
     }
 }
 
@@ -385,10 +396,23 @@ struct SessionTimerButton: View {
 }
 
 struct PanelDragRegion: NSViewRepresentable {
+    var onPress: (() -> Void)? = nil
+
     func makeNSView(context: Context) -> DragView { DragView() }
-    func updateNSView(_ view: DragView, context: Context) {}
+
+    func updateNSView(_ view: DragView, context: Context) {
+        view.onPress = onPress
+        view.pressureConfiguration = onPress == nil ? nil : NSPressureConfiguration(pressureBehavior: .primaryGeneric)
+    }
 
     final class DragView: NSView {
+        var onPress: (() -> Void)?
+        private var pointerStart: NSPoint?
+        private var windowStart: NSPoint = .zero
+        private var hold: Task<Void, Never>?
+        private var dragging = false
+        private var pressed = false
+
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -397,7 +421,50 @@ struct PanelDragRegion: NSViewRepresentable {
         }
 
         override func mouseDown(with event: NSEvent) {
-            window?.performDrag(with: event)
+            guard let window else { return }
+            guard onPress != nil else {
+                window.performDrag(with: event)
+                return
+            }
+            pointerStart = window.convertPoint(toScreen: event.locationInWindow)
+            windowStart = window.frame.origin
+            dragging = false
+            pressed = false
+            hold?.cancel()
+            hold = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(450))
+                guard !Task.isCancelled else { return }
+                self?.activatePress()
+            }
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let window, let pointerStart, !pressed else { return }
+            let pointer = window.convertPoint(toScreen: event.locationInWindow)
+            let dx = pointer.x - pointerStart.x
+            let dy = pointer.y - pointerStart.y
+            guard dragging || hypot(dx, dy) >= 4 else { return }
+            dragging = true
+            hold?.cancel()
+            window.setFrameOrigin(NSPoint(x: windowStart.x + dx, y: windowStart.y + dy))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            hold?.cancel()
+            hold = nil
+            pointerStart = nil
+        }
+
+        override func pressureChange(with event: NSEvent) {
+            if event.stage >= 2 { activatePress() }
+        }
+
+        private func activatePress() {
+            guard window != nil, pointerStart != nil, !dragging, !pressed,
+                  NSEvent.pressedMouseButtons & 1 != 0 else { return }
+            pressed = true
+            hold?.cancel()
+            onPress?()
         }
     }
 }
